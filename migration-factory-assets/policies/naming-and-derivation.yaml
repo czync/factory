@@ -1,0 +1,53 @@
+version: "1.1.0"
+description: "Onboarding 20+ 步及 7 项平台改造外部工单标准参数自动推导规则"
+
+# 输入上下文变量：
+# - app.app_code (如 TRDCORE)
+# - app.cmdb_id (如 CMDB-88412)
+# - app.owner_email
+# - app.wave_id (如 W0, W1)
+# - env in [DEV, UAT, PROD]
+
+naming_conventions:
+  sailpoint_devops_groups:
+    dev: "ENT-{{app.app_code}}-DEVOPS-DEV"
+    lead: "ENT-{{app.app_code}}-DEVOPS-LEAD"
+    manager: "ENT-{{app.app_code}}-DEVOPS-MGR"
+    sqa: "ENT-{{app.app_code}}-DEVOPS-SQA"
+    ops: "ENT-{{app.app_code}}-DEVOPS-OPS"
+    secret_admin: "ENT-{{app.app_code}}-VAULT-ADMIN"
+    readonly: "ENT-{{app.app_code}}-DEVOPS-RO"
+    sre: "ENT-{{app.app_code}}-SRE"
+
+  aws_iam_groups:
+    per_environment:
+      - "ENT-{{app.app_code}}-AWS-{{env}}-RO"
+      - "ENT-{{app.app_code}}-AWS-{{env}}-VIEW"
+      - "ENT-{{app.app_code}}-AWS-{{env}}-PIM-COMPUTE"
+      - "ENT-{{app.app_code}}-AWS-{{env}}-PIM-DB"
+
+  tfe_naming:
+    project_name: "prj-{{app.app_code | lower}}"
+    workspace_per_env: "ws-{{app.app_code | lower}}-{{env | lower}}-main"
+    iac_repo_url: "https://ghe.bank.internal/imsw-iac/{{app.app_code | lower}}-infra.git"
+
+  harness_naming:
+    org_id: "imsw_custody_migration"
+    project_id: "prj_{{app.app_code | lower}}"
+    aws_connector_per_env: "conn_aws_{{app.app_code | lower}}_{{env | lower}}"
+
+  vault_paths:
+    namespace: "custody/imsw/{{app.app_code | lower}}"
+    secret_path_per_env: "custody/imsw/{{app.app_code | lower}}/{{env | lower}}/app-secrets"
+
+# 无 API 步骤自动邮件草稿模板
+email_templates:
+  scim_group_mapping:
+    to: "iam-ops@bank.internal"
+    subject: "[SCIM Mapping Request] {{app.cmdb_id}} ({{app.app_code}}) - AWS / TFE / Harness 组映射"
+    body: |
+      请协助完成应用 {{app.app_code}} ({{app.cmdb_id}}) 的身份组 SCIM 同步与平台映射：
+      - SailPoint DevOps 组：ENT-{{app.app_code}}-DEVOPS-*
+      - AWS 目标账号环境：DEV / UAT / PROD
+      - TFE 项目：prj-{{app.app_code | lower}}
+      - 关联前置审批单：{{predecessors.sailpoint_req_id}}

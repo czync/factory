@@ -1,0 +1,126 @@
+id: as-is-playbook
+version: "1.2.0"
+name: "As-Is 应用标准迁云流水线"
+target_disposition: "As-Is"
+description: "保持原有业务功能与逻辑不变，仅完成 7 项平台适配改造并迁移至 AWS。"
+
+# 固定阶段顺序约束：可复现构建 → 旧系统基线 → 代码改造
+stages:
+  - id: Intake
+    name: "立项与范围登记"
+    gates:
+      - check_id: "CHK-INTAKE-01"
+        title: "CMDB 服务记录与代码仓库关联"
+        owner: "PMO"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+
+  - id: Discovery
+    name: "技术发现、双源依赖识别与并行 Onboarding"
+    parallel_work_packages:
+      - "wp-onboarding-aws"
+    gates:
+      - check_id: "CHK-DISC-01"
+        title: "静态扫描与 Sybase 运行时审计日志交叉核对完成"
+        owner: "架构委员会"
+        automation: "SEMI_AUTO"
+        default_enforcement: "WARN"
+      - check_id: "CHK-DISC-02"
+        title: "7 项平台改造适用矩阵锁定"
+        owner: "架构委员会"
+        automation: "SEMI_AUTO"
+        default_enforcement: "BLOCK"
+
+  - id: Spec
+    name: "规格锁定与旧系统基线封存（Build 前置硬关卡）"
+    required_work_packages:
+      - "wp-00-legacy-baseline"
+    gates:
+      - check_id: "CHK-SPEC-01"
+        title: "旧系统可复现构建通过（游离依赖封存 Artifactory）"
+        owner: "架构委员会"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-SPEC-02"
+        title: "WP-00 旧系统黄金样本 (Golden Master) 采集与 SHA256 登记"
+        owner: "测试框架工作组"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+
+  - id: Build
+    name: "平台改造实施（7 项改造子集）"
+    available_work_packages:
+      - "wp-01-secrets-vault-cyberark"
+      - "wp-02-cicd-harness"
+      - "wp-03-compute-ecs-ec2-eks"
+      - "wp-04-file-transfer-mfx"
+      - "wp-05-scheduler-autosys"
+      - "wp-06-db-sybase-to-oracle"
+      - "wp-07-os-solaris-win-to-linux"
+    gates:
+      - check_id: "CHK-BUILD-01"
+        title: "合入 Develop 的所有 PR 具备独立人工 Review 且无自合自改"
+        owner: "企业 SDLC"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-BUILD-02"
+        title: "仓库零明文密钥、零录屏(.mp4)及 Agent 会话状态脏文件"
+        owner: "信息安全"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-BUILD-03"
+        title: "PR 100% 声明 AI 工具与模型版本"
+        owner: "模型治理"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+
+  - id: Verify
+    name: "Release 晋级、UAT 部署与双跑等价性验证"
+    gates:
+      - check_id: "CHK-VER-01"
+        title: "Develop → Release 唯一制品构建完成并部署 UAT"
+        owner: "企业 SDLC"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-VER-02"
+        title: "WP-00 双跑比对无未解释差异，TFE Drift 为零"
+        owner: "测试框架工作组"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+
+  - id: ProdParallel
+    name: "生产并行验证（按需执行）"
+    gates:
+      - check_id: "CHK-PARA-01"
+        title: "连续无差异并行周期达标（核心应用 90 天，W0 精简版 14 天）"
+        owner: "架构委员会"
+        automation: "SEMI_AUTO"
+        default_enforcement: "WARN"
+
+  - id: Cutover
+    name: "数据 Wave 校验、生产切换与运维移交"
+    gates:
+      - check_id: "CHK-CUT-01"
+        title: "数据先到、应用再走：上游读取核心数据库表所属 Wave 已切换就绪"
+        owner: "数据库工作组"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-CUT-02"
+        title: "PROD 运行制品 SHA256 与 UAT 验证制品 100% 一致"
+        owner: "信息安全"
+        automation: "AUTO"
+        default_enforcement: "BLOCK"
+      - check_id: "CHK-CUT-03"
+        title: "供应商/临时人员知识移交与运维团队交接签字"
+        owner: "运维团队"
+        automation: "MANUAL"
+        default_enforcement: "BLOCK"
+
+  - id: Decommission
+    name: "旧机房资源下线与 CMDB 核销"
+    gates:
+      - check_id: "CHK-DEC-01"
+        title: "依赖账本下游清零，旧服务器与 Sybase 账号注销完成"
+        owner: "机房退出组"
+        automation: "SEMI_AUTO"
+        default_enforcement: "BLOCK"

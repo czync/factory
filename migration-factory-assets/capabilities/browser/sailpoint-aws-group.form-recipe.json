@@ -1,0 +1,59 @@
+{
+  "recipe_id": "form-sailpoint-aws-group-v1",
+  "version": "1.2.0",
+  "portal_name": "SailPoint IdentityIQ — 申请 AWS 环境访问权限组",
+  "target_url_pattern": "https://iam.bank.internal/identityiq/ui/rest/requestAccess/*",
+  "recorded_by_app": "APP-W0-01 (SETTLE-LITE)",
+  "crystallized_by": "Local-AI-Parameterizer v1",
+  "preconditions": [
+    "app_cmdb_id_registered",
+    "corporate_sso_logged_in"
+  ],
+  "fields": [
+    {
+      "step": 1,
+      "action": "fill",
+      "label_text": "Application CMDB ID *",
+      "payload_binding": "{{payload.app.cmdb_id}}",
+      "selectors": [
+        "input[aria-label='Application CMDB ID']",
+        "//label[contains(text(),'Application CMDB ID')]/following::input[1]"
+      ]
+    },
+    {
+      "step": 2,
+      "action": "select",
+      "label_text": "Target Cloud Environment *",
+      "payload_binding": "{{payload.env}}",
+      "selectors": [
+        "select[name='targetEnvironment']",
+        "//label[contains(text(),'Target Cloud Environment')]/following::select[1]"
+      ]
+    },
+    {
+      "step": 3,
+      "action": "fill",
+      "label_text": "Requested AD Group Name *",
+      "payload_binding": "{{payload.aws_iam_groups.per_environment[0]}}",
+      "selectors": [
+        "input[aria-label='Requested AD Group Name']",
+        "input[name*='groupName']",
+        "//label[contains(text(),'Requested AD Group Name')]/following::input[1]"
+      ]
+    },
+    {
+      "step": 4,
+      "action": "fill",
+      "label_text": "Business Justification",
+      "payload_binding": "Migration Factory Wave {{payload.app.wave_id}} AWS Onboarding for {{payload.app.app_code}}",
+      "selectors": [
+        "textarea[name='justification']",
+        "//label[contains(text(),'Business Justification')]/following::textarea[1]"
+      ]
+    }
+  ],
+  "receipt_extractor": {
+    "selector": ".request-confirmation-banner .request-id",
+    "regex": "(REQ\\d{7}|RITM\\d{7})"
+  }
+}

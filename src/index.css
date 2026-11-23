@@ -1,0 +1,844 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Migration Control Plane — Linear / Vercel Precision Minimalism
+   Light Mode First + Crisp Dark Mode via color-scheme & light-dark()
+   ========================================================================== */
+
+@property --mcp-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --mcp-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+:root {
+  /* Per modern-web-guidance/dark-mode-toggle: keep root base as `light dark`
+     and map both <meta name="color-scheme"> and [data-theme] overrides. */
+  color-scheme: light dark;
+
+  &:where(:has(> head > meta[name="color-scheme"][content="dark"])) {
+    color-scheme: dark;
+  }
+  &:where(:has(> head > meta[name="color-scheme"][content="light"])) {
+    color-scheme: light;
+  }
+  &[data-theme="light"] {
+    color-scheme: light;
+  }
+  &[data-theme="dark"] {
+    color-scheme: dark;
+  }
+
+  /* 90% Neutral Grayscale Surfaces */
+  --bg-canvas: light-dark(#fafafa, #0c0d10);
+  --bg-sidebar: light-dark(#f5f6f7, #111318);
+  --bg-subtle: light-dark(#f5f6f7, #111318);
+  --bg-surface: light-dark(#ffffff, #15181f);
+  --bg-hover: light-dark(#f2f4f7, #1b1f28);
+  --bg-surface-hover: light-dark(#f2f4f7, #1b1f28);
+  --bg-well: light-dark(#f4f5f7, #101218);
+
+  /* 1px Hairline Borders */
+  --line: light-dark(rgba(15, 23, 42, 0.08), rgba(255, 255, 255, 0.08));
+  --line-subtle: light-dark(rgba(15, 23, 42, 0.05), rgba(255, 255, 255, 0.05));
+  --line-strong: light-dark(rgba(15, 23, 42, 0.14), rgba(255, 255, 255, 0.14));
+
+  /* Ink Hierarchy */
+  --ink: light-dark(#111318, #eef0f4);
+  --ink-secondary: light-dark(#4b5563, #a1aab8);
+  --ink-muted: light-dark(#6e7781, #6d7684);
+  --ink-faint: light-dark(#8c959f, #555e6c);
+
+  /* 8% Low-Saturation Slate-Cobalt Accent */
+  --accent: light-dark(#3b5b92, #7496cf);
+  --accent-soft: light-dark(rgba(59, 91, 146, 0.09), rgba(116, 150, 207, 0.13));
+  --accent-line: light-dark(rgba(59, 91, 146, 0.24), rgba(116, 150, 207, 0.28));
+
+  /* Primary High-Contrast Action Button Surface */
+  --btn-primary-bg: light-dark(#18181b, #f3f4f6);
+  --btn-primary-hover: light-dark(#27272a, #ffffff);
+  --btn-primary-ink: light-dark(#ffffff, #111318);
+
+  /* 2% Quiet Semantic Signals */
+  --signal-ok: light-dark(#2d8659, #4ba87a);
+  --signal-ok-soft: light-dark(rgba(45, 134, 89, 0.09), rgba(75, 168, 122, 0.13));
+  --signal-ok-line: light-dark(rgba(45, 134, 89, 0.24), rgba(75, 168, 122, 0.28));
+
+  --signal-warn: light-dark(#ad6b15, #d99b43);
+  --signal-warn-soft: light-dark(rgba(173, 107, 21, 0.09), rgba(217, 155, 67, 0.13));
+  --signal-warn-line: light-dark(rgba(173, 107, 21, 0.24), rgba(217, 155, 67, 0.28));
+
+  --signal-danger: light-dark(#c23b4b, #e06c7a);
+  --signal-danger-soft: light-dark(rgba(194, 59, 75, 0.09), rgba(224, 108, 122, 0.14));
+  --signal-danger-line: light-dark(rgba(194, 59, 75, 0.24), rgba(224, 108, 122, 0.3));
+
+  /* Overlays & Chrome */
+  --topbar-bg: light-dark(rgba(250, 250, 250, 0.9), rgba(12, 13, 16, 0.9));
+  --scrim: light-dark(rgba(15, 23, 42, 0.28), rgba(0, 0, 0, 0.56));
+  --shadow-color-sm: light-dark(rgba(15, 23, 42, 0.06), rgba(0, 0, 0, 0.36));
+  --shadow-color-lg: light-dark(rgba(15, 23, 42, 0.14), rgba(0, 0, 0, 0.58));
+  --shadow-sm: 0 1px 2px var(--shadow-color-sm);
+  --shadow-overlay: 0 16px 40px -12px var(--shadow-color-lg), 0 1px 2px var(--shadow-color-sm);
+  --shadow-drawer: -8px 0 32px -12px var(--shadow-color-lg);
+
+  /* Typography */
+  --font-sans:
+    "Geist Variable", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono:
+    "Geist Mono Variable", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Compact Geometry Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* Calm Motion */
+  --ease-fast: ease-out;
+  --ease-calm: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 110ms;
+  --dur-overlay: 170ms;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background-color: var(--bg-canvas);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg-canvas);
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+
+  /* Minimal Scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-faint);
+  }
+}
+
+@layer components {
+  /* ==========================================================================
+     Semantic Typography & Accessibility Utilities
+     ========================================================================== */
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Visually hidden live regions & captions (never display: none) */
+  .mcp-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ==========================================================================
+     Flat Precision Surfaces
+     ========================================================================== */
+
+  .mcp-surface {
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+  }
+
+  .mcp-well {
+    background: var(--bg-well);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+  }
+
+  /* ==========================================================================
+     Flat Precision Buttons (zero gradients, zero skeuomorphic shadows)
+     ========================================================================== */
+
+  .mcp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    letter-spacing: -0.008em;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition:
+      background-color var(--dur-fast) var(--ease-fast),
+      border-color var(--dur-fast) var(--ease-fast),
+      color var(--dur-fast) var(--ease-fast),
+      opacity var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .mcp-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .mcp-btn-primary {
+    background: var(--btn-primary-bg);
+    color: var(--btn-primary-ink);
+    border-color: var(--btn-primary-bg);
+  }
+
+  .mcp-btn-primary:hover:not(:disabled) {
+    background: var(--btn-primary-hover);
+    border-color: var(--btn-primary-hover);
+  }
+
+  .mcp-btn-secondary {
+    background: var(--bg-surface);
+    color: var(--ink);
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .mcp-btn-secondary:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  .mcp-btn-ghost {
+    background: transparent;
+    color: var(--ink-secondary);
+    border-color: transparent;
+  }
+
+  .mcp-btn-ghost:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--ink);
+  }
+
+  .mcp-btn-danger {
+    background: var(--signal-danger-soft);
+    color: var(--signal-danger);
+    border-color: var(--signal-danger-line);
+  }
+
+  .mcp-btn-danger:hover:not(:disabled) {
+    background: var(--signal-danger);
+    border-color: var(--signal-danger);
+    color: #ffffff;
+  }
+
+  /* ==========================================================================
+     Modern Web Guidance: Hairline Tabs (single-row scroll + aria-selected ::after)
+     ========================================================================== */
+
+  .mcp-tablist {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: inline proximity;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .mcp-tablist::-webkit-scrollbar {
+    display: none;
+  }
+
+  @supports (animation-timeline: scroll(self inline)) {
+    .mcp-tablist {
+      --mcp-fade-size: 1.75rem;
+      --mcp-fade-dir: right;
+      --mcp-fade-start-pos: 0;
+      --mcp-fade-end-pos: 100%;
+      scroll-padding-inline: var(--mcp-fade-size);
+      mask:
+        linear-gradient(black, black) no-clip subtract,
+        linear-gradient(to var(--mcp-fade-dir), black, transparent) var(--mcp-fade-start-pos) 0 /
+          var(--mcp-fade-start) 100% no-repeat no-clip,
+        linear-gradient(to var(--mcp-fade-dir), transparent, black) var(--mcp-fade-end-pos) 0 /
+          var(--mcp-fade-end) 100% no-repeat no-clip;
+      animation:
+        mcp-reveal-fade-start linear both,
+        mcp-hide-fade-end linear both;
+      animation-timeline: scroll(self inline);
+      animation-range:
+        0 var(--mcp-fade-size),
+        calc(100% - var(--mcp-fade-size)) 100%;
+
+      &:dir(rtl) {
+        --mcp-fade-dir: left;
+        --mcp-fade-start-pos: 100%;
+        --mcp-fade-end-pos: 0;
+      }
+    }
+
+    @keyframes mcp-reveal-fade-start {
+      to {
+        --mcp-fade-start: var(--mcp-fade-size);
+      }
+    }
+
+    @keyframes mcp-hide-fade-end {
+      from {
+        --mcp-fade-end: var(--mcp-fade-size);
+      }
+    }
+  }
+
+  .mcp-tab {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    color: var(--ink-muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    transition: color var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-tab:hover:not(:disabled) {
+    color: var(--ink);
+  }
+
+  .mcp-tab:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  .mcp-tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Style selected tab directly from aria-selected; border on ::after survives Forced Colors */
+  .mcp-tab[aria-selected="true"] {
+    color: var(--ink);
+  }
+
+  .mcp-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    border-block-end: 1.5px solid var(--accent);
+  }
+
+  /* ==========================================================================
+     Modern Web Guidance: Responsive & Sortable Hairline Table
+     - Sticky column headers & sticky first-column row headers
+     - @container (width < 640px) stacked card layout with data-label injection
+     - Sort buttons inside <th scope="col">, aria-sort-driven CSS icons
+     ========================================================================== */
+
+  .mcp-table-region {
+    overflow: auto;
+    max-inline-size: 100%;
+    container-type: inline-size;
+    background: var(--bg-surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+  }
+
+  .mcp-table-region:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .mcp-table {
+    width: 100%;
+    min-inline-size: 620px;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: left;
+    --mcp-row-py: 8px;
+  }
+
+  .mcp-table[data-density="comfortable"] {
+    --mcp-row-py: 10px;
+  }
+
+  .mcp-table thead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background: var(--bg-sidebar);
+  }
+
+  .mcp-table thead th {
+    padding: 8px 12px;
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: var(--ink-muted);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  /* Per modern-web-guidance/sortable-table: drop th padding only when a sort button supplies it */
+  .mcp-table thead th:has(> button.mcp-sort-btn) {
+    padding: 0;
+  }
+
+  .mcp-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    min-block-size: 32px;
+    padding: 8px 12px;
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    user-select: none;
+    text-align: inherit;
+    transition:
+      color var(--dur-fast) var(--ease-fast),
+      background-color var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-sort-btn:hover {
+    color: var(--ink);
+    background: var(--bg-hover);
+  }
+
+  .mcp-sort-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .mcp-table thead th[aria-sort] .mcp-sort-btn {
+    color: var(--ink);
+  }
+
+  /* Pure CSS sort direction chevrons driven solely by th[aria-sort] */
+  .mcp-sort-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--ink-faint);
+  }
+
+  .mcp-sort-icon .mcp-sort-asc,
+  .mcp-sort-icon .mcp-sort-desc {
+    opacity: 0.32;
+    transition: opacity var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-table thead th[aria-sort="ascending"] .mcp-sort-icon,
+  .mcp-table thead th[aria-sort="descending"] .mcp-sort-icon {
+    color: var(--accent);
+  }
+
+  .mcp-table thead th[aria-sort="ascending"] .mcp-sort-asc {
+    opacity: 1;
+  }
+
+  .mcp-table thead th[aria-sort="descending"] .mcp-sort-desc {
+    opacity: 1;
+  }
+
+  .mcp-table tbody tr {
+    background: var(--bg-surface);
+    transition: background-color var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-table tbody tr[data-clickable="true"] {
+    cursor: pointer;
+  }
+
+  .mcp-table tbody tr:hover {
+    background: var(--bg-hover);
+  }
+
+  .mcp-table tbody tr:hover th[scope="row"] {
+    background: var(--bg-hover);
+  }
+
+  .mcp-table tbody tr[data-active="true"] {
+    background: var(--accent-soft);
+  }
+
+  .mcp-table tbody tr[data-active="true"] th[scope="row"] {
+    background: color-mix(in srgb, var(--accent) 9%, var(--bg-surface));
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  .mcp-table tbody tr:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .mcp-table tbody th[scope="row"] {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    background: var(--bg-surface);
+    padding: var(--mcp-row-py) 12px;
+    font-weight: 500;
+    border-bottom: 1px solid var(--line-subtle);
+    vertical-align: middle;
+    transition: background-color var(--dur-fast) var(--ease-fast);
+  }
+
+  .mcp-table tbody td {
+    padding: var(--mcp-row-py) 12px;
+    border-bottom: 1px solid var(--line-subtle);
+    vertical-align: middle;
+    color: var(--ink-secondary);
+  }
+
+  .mcp-table tbody tr:last-child th[scope="row"],
+  .mcp-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Container-query stacked mobile cards (per modern-web-guidance/responsive-table) */
+  @container (width < 640px) {
+    .mcp-table {
+      min-inline-size: 0;
+    }
+
+    .mcp-table,
+    .mcp-table thead,
+    .mcp-table tbody,
+    .mcp-table tr,
+    .mcp-table th,
+    .mcp-table td {
+      display: block;
+    }
+
+    .mcp-table thead {
+      display: none;
+    }
+
+    .mcp-table tbody {
+      padding: 8px;
+    }
+
+    .mcp-table tbody tr {
+      margin-block-end: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+
+    .mcp-table tbody tr:last-child {
+      margin-block-end: 0;
+    }
+
+    .mcp-table tbody th[scope="row"] {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--line);
+      padding: 9px 12px;
+    }
+
+    .mcp-table tbody tr[data-active="true"] th[scope="row"] {
+      background: color-mix(in srgb, var(--accent) 11%, var(--bg-sidebar));
+    }
+
+    .mcp-table tbody td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line-subtle);
+      text-align: right;
+    }
+
+    .mcp-table tbody td::before {
+      content: attr(data-label);
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--ink-muted);
+      text-align: left;
+      flex-shrink: 0;
+    }
+  }
+
+  /* ==========================================================================
+     Modern Web Guidance: Native <dialog> Centered Modal (.mcp-dialog)
+     - Never sets display unconditionally on dialog
+     - Top-layer @starting-style + allow-discrete + [data-closing] fallback
+     - Bidirectional overscroll containment on :modal and ::backdrop
+     ========================================================================== */
+
+  dialog.mcp-dialog {
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg);
+    background: var(--bg-surface);
+    color: var(--ink);
+    width: min(var(--dialog-width, 860px), calc(100vw - 2rem));
+    max-width: none;
+    max-height: min(84svh, 800px);
+    overflow: hidden;
+    opacity: 0;
+    box-shadow: var(--shadow-overlay);
+
+    transition-property: opacity, transform, display, overlay;
+    transition-duration: var(--dur-overlay);
+    transition-timing-function: var(--ease-calm);
+    transition-behavior: allow-discrete;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    dialog.mcp-dialog {
+      transform: translateY(6px);
+    }
+  }
+
+  dialog.mcp-dialog:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog.mcp-dialog[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  dialog.mcp-dialog[open]:where(:not([data-closing])) {
+    opacity: 1;
+
+    @starting-style {
+      opacity: 0;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      transform: translateY(0);
+
+      @starting-style {
+        transform: translateY(6px);
+      }
+    }
+  }
+
+  dialog.mcp-dialog::backdrop {
+    background-color: transparent;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    transition-property: background-color, display, overlay;
+    transition-duration: var(--dur-overlay);
+    transition-timing-function: var(--ease-calm);
+    transition-behavior: allow-discrete;
+  }
+
+  dialog.mcp-dialog[open]:where(:not([data-closing]))::backdrop {
+    background-color: var(--scrim);
+
+    @starting-style {
+      background-color: transparent;
+    }
+  }
+
+  /* ==========================================================================
+     Modern Web Guidance: Native <dialog> Right-Side Inspector Drawer (.mcp-drawer)
+     - Uses 100svh (never vh/dvh) to prevent iOS Safari height jump
+     - 580px-620px on desktop, full width on mobile
+     - Calm 170ms slide-over via @starting-style + [data-closing] fallback
+     ========================================================================== */
+
+  dialog.mcp-drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    inset-inline-start: auto;
+    margin: 0;
+    padding: 0;
+    width: min(var(--drawer-width, 580px), 100vw);
+    max-width: none;
+    height: 100svh;
+    max-height: 100svh;
+    border: 0;
+    border-inline-start: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    background: var(--bg-surface);
+    color: var(--ink);
+    overflow: hidden;
+    opacity: 0;
+    box-shadow: var(--shadow-drawer);
+
+    transition-property: opacity, transform, display, overlay;
+    transition-duration: var(--dur-overlay);
+    transition-timing-function: var(--ease-calm);
+    transition-behavior: allow-discrete;
+  }
+
+  dialog.mcp-drawer[data-side="left"] {
+    --drawer-width: 260px;
+    width: min(var(--drawer-width), 82vw);
+    inset-inline-start: 0;
+    inset-inline-end: auto;
+    border-inline-start: 0;
+    border-inline-end: 1px solid var(--line-strong);
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    box-shadow: 8px 0 32px -12px var(--shadow-color-lg);
+  }
+
+  @media (max-width: 639px) {
+    dialog.mcp-drawer {
+      width: 100vw;
+      border-inline-start: 0;
+      border-radius: 0;
+    }
+
+    dialog.mcp-drawer[data-side="left"] {
+      width: min(260px, 82vw);
+      border-inline-end: 1px solid var(--line-strong);
+      border-radius: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    dialog.mcp-drawer {
+      transform: translateX(100%);
+    }
+
+    dialog.mcp-drawer[data-side="left"] {
+      transform: translateX(-100%);
+    }
+  }
+
+  dialog.mcp-drawer:modal {
+    overscroll-behavior: contain;
+  }
+
+  dialog.mcp-drawer[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  dialog.mcp-drawer[open]:where(:not([data-closing])) {
+    opacity: 1;
+
+    @starting-style {
+      opacity: 0;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      transform: translateX(0);
+
+      @starting-style {
+        transform: translateX(100%);
+      }
+    }
+  }
+
+  dialog.mcp-drawer[data-side="left"][open]:where(:not([data-closing])) {
+    @media (prefers-reduced-motion: no-preference) {
+      transform: translateX(0);
+
+      @starting-style {
+        transform: translateX(-100%);
+      }
+    }
+  }
+
+  dialog.mcp-drawer::backdrop {
+    background-color: transparent;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    transition-property: background-color, display, overlay;
+    transition-duration: var(--dur-overlay);
+    transition-timing-function: var(--ease-calm);
+    transition-behavior: allow-discrete;
+  }
+
+  dialog.mcp-drawer[open]:where(:not([data-closing]))::backdrop {
+    background-color: var(--scrim);
+
+    @starting-style {
+      background-color: transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    dialog.mcp-dialog,
+    dialog.mcp-dialog::backdrop,
+    dialog.mcp-drawer,
+    dialog.mcp-drawer::backdrop {
+      transition-duration: 100ms;
+    }
+  }
+
+  /* Native <details> disclosure reset */
+  details.mcp-details summary {
+    list-style: none;
+    cursor: pointer;
+  }
+
+  details.mcp-details summary::-webkit-details-marker {
+    display: none;
+  }
+}

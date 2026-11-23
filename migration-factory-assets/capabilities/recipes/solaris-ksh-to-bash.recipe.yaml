@@ -1,0 +1,39 @@
+id: recipe-solaris-ksh-to-bash-v1
+version: "1.1.0"
+work_package: wp-07-os-solaris-win-to-linux
+source_jira_problem: "MIG-1042"
+source_verification_pr: "https://ghe.bank.internal/imsw/migration-factory/pull/38"
+title: "Solaris ksh 数组语法、/usr/xpg4/bin 路径与 print -u2 迁移至 Linux Bash"
+maturity: "Level-4-Deterministic-Eligible"
+
+detector:
+  file_globs: ["**/*.sh", "**/*.ksh", "scripts/**/*"]
+  patterns:
+    - regex: "^#!/bin/ksh"
+      description: "Solaris KornShell Shebang"
+    - regex: "/usr/xpg4/bin/(awk|sed|grep)"
+      description: "Solaris POSIX 工具专有绝对路径"
+    - regex: "set -A\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+"
+      description: "ksh 数组声明语法 set -A"
+    - regex: "print\\s+-u2\\s+"
+      description: "ksh 标准错误输出语法"
+
+transformations:
+  - name: "replace_shebang"
+    match: "^#!/bin/ksh"
+    replace: "#!/usr/bin/env bash"
+  - name: "strip_xpg4_prefix"
+    match: "/usr/xpg4/bin/"
+    replace: "/usr/bin/"
+  - name: "convert_ksh_array"
+    match: "set -A\\s+([A-Za-z_][A-Za-z0-9_]*)\\s+(.*)"
+    replace: "$1=($2)"
+  - name: "convert_print_stderr"
+    match: "print\\s+-u2\\s+(.*)"
+    replace: "printf '%s\\n' $1 >&2"
+
+verifier:
+  commands:
+    - "shellcheck --shell=bash {{changed_files}}"
+    - "bash -n {{changed_files}}"
+  requires_legacy_baseline_diff: true
