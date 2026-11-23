@@ -1,6 +1,5 @@
 /**
  * Calm motion timing tokens (Linear / Vercel precision minimalism)
- * plus modern-web-guidance top-layer <dialog> exit detection & fallback
  * and <meta name="color-scheme"> synchronization helper.
  */
 
@@ -23,6 +22,29 @@ export const TRANSITION_OVERLAY = {
   ease: EASE_CALM,
 } as const;
 
+export const SPRING_TACTILE = {
+  type: 'spring' as const,
+  stiffness: 520,
+  damping: 36,
+  mass: 0.7,
+} as const;
+
+export const SPRING_INDICATOR = {
+  type: 'spring' as const,
+  stiffness: 460,
+  damping: 34,
+} as const;
+
+export const SPRING_CHECK = {
+  type: 'spring' as const,
+  bounce: 0,
+  duration: 0.24,
+} as const;
+
+export const TAP_PRESS = {
+  scale: 0.975,
+} as const;
+
 /**
  * Keeps `<meta name="color-scheme">` and `<html data-theme>` synchronized.
  * Passing `'system'` restores `light dark` and removes `data-theme`.
@@ -37,55 +59,4 @@ export function syncColorSchemeMeta(theme: 'light' | 'dark' | 'system'): void {
   }
   document.documentElement.dataset.theme = theme;
   if (meta) meta.content = theme;
-}
-
-/* ==========================================================================
-   Modern Web Guidance: Top-layer exit capability probe (Firefox/Safari fallback)
-   ========================================================================== */
-
-let cachedSupportsDisplayTransition: boolean | undefined;
-
-export function canTransitionDisplay(): boolean {
-  if (cachedSupportsDisplayTransition !== undefined) {
-    return cachedSupportsDisplayTransition;
-  }
-  if (
-    typeof window === 'undefined' ||
-    !window.CSS?.supports?.('transition-behavior', 'allow-discrete') ||
-    !document.body
-  ) {
-    return false;
-  }
-  const probe = document.createElement('div');
-  probe.style.cssText = 'transition: display 1s allow-discrete !important; display: block;';
-  document.body.appendChild(probe);
-  void getComputedStyle(probe).display;
-  probe.style.display = 'none';
-  cachedSupportsDisplayTransition = getComputedStyle(probe).display === 'block';
-  probe.remove();
-  return cachedSupportsDisplayTransition;
-}
-
-export function supportsTopLayerExit(): boolean {
-  if (typeof window === 'undefined') return false;
-  return Boolean(window.CSS?.supports?.('overlay', 'auto') && canTransitionDisplay());
-}
-
-export async function closeDialogWithFallback(dialog: HTMLDialogElement): Promise<void> {
-  if (!dialog.open) return;
-  if (!supportsTopLayerExit()) {
-    dialog.setAttribute('data-closing', '');
-    const animations = dialog.getAnimations({ subtree: true });
-    if (animations.length > 0) {
-      await Promise.race([
-        Promise.allSettled(animations.map((a) => a.finished)),
-        new Promise((resolve) => window.setTimeout(resolve, DURATION_OVERLAY_MS + 90)),
-      ]);
-    }
-    if (!dialog.hasAttribute('data-closing')) return;
-    dialog.removeAttribute('data-closing');
-  }
-  if (dialog.open) {
-    dialog.close();
-  }
 }

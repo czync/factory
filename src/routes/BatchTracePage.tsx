@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   AlertTriangle,
   Bot,
@@ -7,16 +8,27 @@ import {
   RotateCcw,
   Terminal,
 } from 'lucide-react';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { DataTable, type DataTableColumn, type SortingState } from '@/components/ui/DataTable';
 import {
   Badge,
   Button,
   CopyCommandBar,
   HairlineTabs,
+  SelectField,
   StatusDot,
+  Tooltip,
   type HairlineTabOption,
+  type SelectFieldOption,
   type SignalTone,
 } from '@/components/ui/Primitives';
+import {
+  AgentFindings,
+  type Finding,
+  type FindingAgent,
+} from '@/components/uipros/agent-findings-clean';
+import { BlurCrossfade } from '@/components/uipros/blur-crossfade';
+import { NumberTicker } from '@/components/uipros/number-ticker';
+import { TRANSITION_FAST } from '@/lib/motion';
 import { useFactory } from '@/data/store';
 import {
   CURRENT_ENGINEER,
@@ -44,12 +56,14 @@ const WP_OPTIONS: readonly WorkPackageCode[] = [
 
 const WAVE_OPTIONS: readonly WaveId[] = ['W0', 'W1', 'W2', 'W3', 'W4'];
 
-const EXECUTOR_OPTIONS: readonly { value: ExecutorFilter; label: string }[] = [
+const EXECUTOR_OPTIONS: readonly SelectFieldOption<ExecutorFilter>[] = [
   { value: 'ALL', label: '全部 AI 来源' },
   { value: 'Copilot Squad', label: 'Copilot Squad' },
   { value: 'Blitzy (Blackbox)', label: 'Blitzy (Blackbox)' },
   { value: 'Deterministic Script', label: 'Deterministic Script' },
 ];
+
+const FINDING_CLOCK_NOW = Date.UTC(2027, 2, 22, 12, 0, 0);
 
 const WP_SHORT_LABELS: Record<WorkPackageCode, string> = {
   'WP-00': '黄金基线与双跑',
@@ -139,22 +153,26 @@ function VerificationTriad({ pr }: { pr: TracePrItem }) {
 
 export function BatchTracePage() {
   const { scopedBatchTraces, scope, inspectorUnitId, openInspector, notifyCopied } = useFactory();
+  const prefersReducedMotion = Boolean(useReducedMotion());
 
   const quickTabIdPrefix = useId();
   const [wpFilter, setWpFilter] = useState<'ALL' | WorkPackageCode>('ALL');
   const [waveFilter, setWaveFilter] = useState<'ALL' | WaveId>('ALL');
   const [executorFilter, setExecutorFilter] = useState<ExecutorFilter>('ALL');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('ALL');
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'verification', desc: false }]);
 
   const summary = useMemo(() => {
     let ciPassed = 0;
     let ciFailed = 0;
     let awaitingReview = 0;
+    let agentCoreBlocked = 0;
     let blitzyCount = 0;
     for (const row of scopedBatchTraces) {
       if (isCiPassed(row.pr)) ciPassed += 1;
       else ciFailed += 1;
       if (isNeedsReview(row.pr)) awaitingReview += 1;
+      if (row.pr.autoReview?.verdict === 'CHANGES_REQUESTED') agentCoreBlocked += 1;
       if (row.pr.aiExecutor === 'Blitzy (Blackbox)') blitzyCount += 1;
     }
     return {
@@ -162,6 +180,7 @@ export function BatchTracePage() {
       ciPassed,
       ciFailed,
       awaitingReview,
+      agentCoreBlocked,
       blitzyCount,
     };
   }, [scopedBatchTraces]);
@@ -251,6 +270,102 @@ export function BatchTracePage() {
     parts.push(`--scope ${scope === 'MINE' ? 'mine' : 'all'}`);
     return parts.join(' ');
   }, [executorFilter, quickFilter, scope, waveFilter, wpFilter]);
+
+  const wpSelectOptions = useMemo<SelectFieldOption<'ALL' | WorkPackageCode>[]>(
+    () => [
+      { value: 'ALL', label: '全部 (WP-00~07)' },
+      ...WP_OPTIONS.map((wp) => ({ value: wp, label: `${wp} · ${WP_SHORT_LABELS[wp]}` })),
+    ],
+    [],
+  );
+
+  const waveSelectOptions = useMemo<SelectFieldOption<'ALL' | WaveId>[]>(
+    () => [
+      { value: 'ALL', label: '全部 (W0~W4)' },
+      ...WAVE_OPTIONS.map((wave) => ({ value: wave, label: wave })),
+    ],
+    [],
+  );
+
+  // Aggregate AgentCore PR Auto Review findings live from baseFilteredTraces
+  const { findingAgents, findingItems, findingUnitMap } = useMemo(() => {
+    const reviewerMeta: Record<
+      'Blast-Radius' | 'Migration-Semantics' | 'Contract & Blitzy-Gate',
+      { id: string; model: string; step: string }
+    > = {
+      'Blast-Radius': {
+        id: 'Blast-Radius',
+        model: 'Graphify AST · MicroVM',
+        step: '检查变更文件爆炸半径与跨表耦合',
+      },
+      'Migration-Semantics': {
+        id: 'Migration-Semantics',
+        model: 'OpenWiki OKF · Bedrock',
+        step: '核对业务规则语义与 Sybase 逻辑等价',
+      },
+      'Contract & Blitzy-Gate': {
+        id: 'Contract & Blitzy-Gate',
+        model: 'WP-00 & Cedar Policy',
+        step: '校验 Commit Trailer、脏文件与 Blitzy 双跑门禁',
+      },
+    };
+
+    const counts: Record<keyof typeof reviewerMeta, number> = {
+      'Blast-Radius': 0,
+      'Migration-Semantics': 0,
+      'Contract & Blitzy-Gate': 0,
+    };
+    const items: Finding[] = [];
+    const unitLookup = new Map<string, string>();
+    let totalAutoReviews = 0;
+
+    baseFilteredTraces.forEach((row, rowIdx) => {
+      const ac = row.pr.autoReview;
+      if (!ac) return;
+      totalAutoReviews += 1;
+      ac.findings.forEach((f, fIdx) => {
+        counts[f.reviewer] += 1;
+        if (f.severity === 'PASS') return;
+        const fid = `${row.id}-${f.reviewer}-${fIdx}`;
+        unitLookup.set(fid, row.unitId);
+        items.push({
+          id: fid,
+          agentId: f.reviewer,
+          title: `${row.unitCode} ${row.pr.prNumber}: ${f.summary}`,
+          severity: f.severity === 'BLOCK' ? 'critical' : 'warning',
+          location: f.graphImpactNodes
+            ? `${row.wpCode} · Graph ${f.graphImpactNodes} nodes`
+            : `${row.wpCode} · ${row.pr.branch}`,
+          at: FINDING_CLOCK_NOW - (rowIdx * 4 + fIdx + 1) * 180_000,
+        });
+      });
+    });
+
+    const denominator = Math.max(1, totalAutoReviews);
+    const agents: FindingAgent[] = (
+      Object.keys(reviewerMeta) as Array<keyof typeof reviewerMeta>
+    ).map((key) => {
+      const done = Math.max(counts[key], totalAutoReviews);
+      const hasRunning = baseFilteredTraces.some((r) => r.pr.autoReview?.verdict === 'RUNNING');
+      return {
+        id: reviewerMeta[key].id,
+        name: key,
+        model: reviewerMeta[key].model,
+        step: reviewerMeta[key].step,
+        done: hasRunning ? Math.max(0, done - 1) : done,
+        total: Math.max(done, denominator),
+        status: hasRunning ? 'running' : 'done',
+      };
+    });
+
+    // Put critical findings first for immediate operator attention
+    items.sort((a, b) => {
+      const rank = { critical: 0, warning: 1, note: 2 } as const;
+      return rank[a.severity] - rank[b.severity];
+    });
+
+    return { findingAgents: agents, findingItems: items, findingUnitMap: unitLookup };
+  }, [baseFilteredTraces]);
 
   const activeRowId = useMemo(() => {
     if (!inspectorUnitId) return null;
@@ -479,10 +594,13 @@ export function BatchTracePage() {
         accessor: (row) => REVIEW_STATE_META[row.pr.reviewState].rank,
         cell: (row) => {
           const rMeta = REVIEW_STATE_META[row.pr.reviewState];
+          const ac = row.pr.autoReview;
+          const blockCount =
+            ac?.findings.filter((f) => f.severity === 'BLOCK').length ?? 0;
           return (
             <div className="space-y-1">
               <StatusDot tone={rMeta.tone} label={rMeta.label} />
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span
                   className="text-[11px]"
                   style={{
@@ -491,8 +609,29 @@ export function BatchTracePage() {
                       : 'var(--signal-warn)',
                   }}
                 >
-                  {row.pr.independentReview ? '独立 Review ✓' : '缺独立 Review'}
+                  {row.pr.independentReview ? '独立审 ✓' : '缺独立审'}
                 </span>
+                {ac && (
+                  <Tooltip
+                    content={`AWS AgentCore ${ac.sessionId} · Cedar ${ac.cedarPolicy} · ${ac.bedrockModel}`}
+                    side="top"
+                  >
+                    <span
+                      tabIndex={0}
+                      className="font-mono-tabular text-[10.5px] cursor-help"
+                      style={{
+                        color:
+                          ac.verdict === 'CHANGES_REQUESTED'
+                            ? 'var(--signal-danger)'
+                            : 'var(--ink-faint)',
+                      }}
+                    >
+                      {ac.verdict === 'CHANGES_REQUESTED'
+                        ? `AgentCore 拦截(${Math.max(1, blockCount)})`
+                        : 'AgentCore 预审 ✓'}
+                    </span>
+                  </Tooltip>
+                )}
                 {row.pr.dirtyFilesCount > 0 && (
                   <Badge tone="danger" mono>
                     <AlertTriangle className="h-3 w-3" aria-hidden="true" />
@@ -525,7 +664,7 @@ export function BatchTracePage() {
             </Badge>
           </div>
           <p className="text-[12.5px]" style={{ color: 'var(--ink-muted)' }}>
-            跨应用水平聚合 Jira ↔ Branch/PR ↔ AI 来源 ↔ Verification Loop ↔ 独立 Review；点击任意行打开右侧详情抽屉。
+            跨应用水平聚合 Jira ↔ Branch/PR ↔ AI 来源 ↔ Verification Loop ↔ AWS AgentCore 预审与独立 Review；点击任意行打开右侧详情抽屉。
           </p>
         </div>
 
@@ -535,7 +674,7 @@ export function BatchTracePage() {
           style={{ borderColor: 'var(--line)' }}
           aria-label="批次追踪汇总指标"
         >
-          <div className="px-3 flex items-baseline gap-1.5">
+          <div className="px-3 flex items-center gap-1.5">
             <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
               PR 追踪
             </span>
@@ -543,7 +682,7 @@ export function BatchTracePage() {
               className="font-mono-tabular text-[13px] font-semibold"
               style={{ color: 'var(--ink)' }}
             >
-              {summary.total}
+              <NumberTicker value={summary.total} duration={400} />
             </span>
           </div>
           <div className="px-3 flex items-center gap-1.5" style={{ borderColor: 'var(--line)' }}>
@@ -559,7 +698,7 @@ export function BatchTracePage() {
               className="font-mono-tabular text-[13px] font-semibold"
               style={{ color: 'var(--ink)' }}
             >
-              {summary.ciPassed}
+              <NumberTicker value={summary.ciPassed} duration={400} />
             </span>
           </div>
           <div className="px-3 flex items-center gap-1.5" style={{ borderColor: 'var(--line)' }}>
@@ -580,7 +719,7 @@ export function BatchTracePage() {
                 color: summary.ciFailed > 0 ? 'var(--signal-danger)' : 'var(--ink)',
               }}
             >
-              {summary.ciFailed}
+              <NumberTicker value={summary.ciFailed} duration={400} />
             </span>
           </div>
           <div className="px-3 flex items-center gap-1.5" style={{ borderColor: 'var(--line)' }}>
@@ -601,10 +740,31 @@ export function BatchTracePage() {
                 color: summary.awaitingReview > 0 ? 'var(--signal-warn)' : 'var(--ink)',
               }}
             >
-              {summary.awaitingReview}
+              <NumberTicker value={summary.awaitingReview} duration={400} />
             </span>
           </div>
-          <div className="px-3 flex items-baseline gap-1.5" style={{ borderColor: 'var(--line)' }}>
+          <div className="px-3 flex items-center gap-1.5" style={{ borderColor: 'var(--line)' }}>
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{
+                backgroundColor:
+                  summary.agentCoreBlocked > 0 ? 'var(--signal-danger)' : 'var(--ink-faint)',
+              }}
+              aria-hidden="true"
+            />
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+              AgentCore 拦截
+            </span>
+            <span
+              className="font-mono-tabular text-[13px] font-semibold"
+              style={{
+                color: summary.agentCoreBlocked > 0 ? 'var(--signal-danger)' : 'var(--ink)',
+              }}
+            >
+              <NumberTicker value={summary.agentCoreBlocked} duration={400} />
+            </span>
+          </div>
+          <div className="px-3 flex items-center gap-1.5" style={{ borderColor: 'var(--line)' }}>
             <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
               Blitzy PR
             </span>
@@ -612,7 +772,7 @@ export function BatchTracePage() {
               className="font-mono-tabular text-[13px] font-semibold"
               style={{ color: 'var(--accent)' }}
             >
-              {summary.blitzyCount}
+              <NumberTicker value={summary.blitzyCount} duration={400} />
             </span>
           </div>
         </div>
@@ -625,87 +785,67 @@ export function BatchTracePage() {
       >
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Work Package Selector */}
-            <label className="inline-flex items-center gap-1.5 text-[12px]">
+            {/* Work Package Selector (Base UI Select) */}
+            <div className="inline-flex items-center gap-1.5 text-[12px]">
               <span style={{ color: 'var(--ink-muted)' }}>工作包</span>
-              <select
-                aria-label="按工作包筛选"
+              <SelectField<'ALL' | WorkPackageCode>
+                ariaLabel="按工作包筛选"
                 value={wpFilter}
-                onChange={(e) => setWpFilter(e.target.value as 'ALL' | WorkPackageCode)}
-                className="h-7 rounded-[6px] px-2 text-[12px] font-mono-tabular outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  border: '1px solid var(--line-strong)',
-                  color: 'var(--ink)',
-                }}
-              >
-                <option value="ALL">全部 (WP-00~07)</option>
-                {WP_OPTIONS.map((wp) => (
-                  <option key={wp} value={wp}>
-                    {wp} · {WP_SHORT_LABELS[wp]}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={setWpFilter}
+                options={wpSelectOptions}
+                mono
+              />
+            </div>
 
-            {/* Wave Selector */}
-            <label className="inline-flex items-center gap-1.5 text-[12px]">
+            {/* Wave Selector (Base UI Select) */}
+            <div className="inline-flex items-center gap-1.5 text-[12px]">
               <span style={{ color: 'var(--ink-muted)' }}>波次</span>
-              <select
-                aria-label="按迁移波次筛选"
+              <SelectField<'ALL' | WaveId>
+                ariaLabel="按迁移波次筛选"
                 value={waveFilter}
-                onChange={(e) => setWaveFilter(e.target.value as 'ALL' | WaveId)}
-                className="h-7 rounded-[6px] px-2 text-[12px] font-mono-tabular outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  border: '1px solid var(--line-strong)',
-                  color: 'var(--ink)',
-                }}
-              >
-                <option value="ALL">全部 (W0~W4)</option>
-                {WAVE_OPTIONS.map((wave) => (
-                  <option key={wave} value={wave}>
-                    {wave}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={setWaveFilter}
+                options={waveSelectOptions}
+                mono
+              />
+            </div>
 
-            {/* AI Executor Selector */}
-            <label className="inline-flex items-center gap-1.5 text-[12px]">
+            {/* AI Executor Selector (Base UI Select) */}
+            <div className="inline-flex items-center gap-1.5 text-[12px]">
               <span style={{ color: 'var(--ink-muted)' }}>AI 来源</span>
-              <select
-                aria-label="按 AI 来源筛选"
+              <SelectField<ExecutorFilter>
+                ariaLabel="按 AI 来源筛选"
                 value={executorFilter}
-                onChange={(e) => setExecutorFilter(e.target.value as ExecutorFilter)}
-                className="h-7 rounded-[6px] px-2 text-[12px] outline-none focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  border: '1px solid var(--line-strong)',
-                  color: 'var(--ink)',
-                }}
-              >
-                {EXECUTOR_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                onChange={setExecutorFilter}
+                options={EXECUTOR_OPTIONS}
+              />
+            </div>
 
-            {hasActiveFilters && (
-              <Button variant="ghost" size="xs" onClick={resetFilters}>
-                <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                重置筛选
-              </Button>
-            )}
+            <AnimatePresence initial={false}>
+              {hasActiveFilters && (
+                <motion.div
+                  key="reset-trace-filters"
+                  className="inline-flex"
+                  initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
+                  animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                  exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
+                  transition={prefersReducedMotion ? { duration: 0.01 } : TRANSITION_FAST}
+                >
+                  <Button variant="ghost" size="xs" onClick={resetFilters}>
+                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                    重置筛选
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <span
-            className="font-mono-tabular text-[11.5px]"
+            className="inline-flex items-center gap-1 font-mono-tabular text-[11.5px]"
             style={{ color: 'var(--ink-faint)' }}
           >
-            显示 {filteredTraces.length} / {scopedBatchTraces.length} 条 PR 追踪
+            <span>显示</span>
+            <NumberTicker value={filteredTraces.length} duration={400} />
+            <span>/ {scopedBatchTraces.length} 条 PR 追踪</span>
           </span>
         </div>
 
@@ -727,32 +867,57 @@ export function BatchTracePage() {
         />
       </section>
 
+      {/* AWS AgentCore PR Auto Review Swarm Findings */}
+      {findingAgents.length > 0 && (
+        <section aria-label="AgentCore 多审校器发现流">
+          <AgentFindings
+            title="AgentCore PR Auto Review · 多审校器拦截与告警流（点击审校器筛选 · 点击条目打开应用抽屉）"
+            agents={findingAgents}
+            findings={findingItems}
+            rows={4}
+            now={FINDING_CLOCK_NOW}
+            onOpen={(finding) => {
+              const uid = findingUnitMap.get(finding.id);
+              if (uid) openInspector(uid, 'trace');
+            }}
+          />
+        </section>
+      )}
+
       {/* Main Dense Sortable Traceability Table */}
       <section aria-label="水平批次追踪明细表">
         <div
           role="tabpanel"
           aria-labelledby={`${quickTabIdPrefix}-${quickFilter}`}
         >
-          <DataTable<BatchTraceRecord>
-            caption="跨应用水平批次追踪（Jira、PR、AI 来源、Verification Loop 与 Review）"
-            data={filteredTraces}
-            columns={columns}
-            getRowId={(row) => row.id}
-            activeRowId={activeRowId}
-            onRowClick={(row) => openInspector(row.unitId, 'trace')}
-            initialSorting={[{ id: 'verification', desc: false }]}
-            density="dense"
-            emptyTitle="当前筛选条件下暂无匹配 PR 追踪记录"
-            emptyDescription="请放宽工作包、波次或快捷状态筛选，或在顶栏切换「All Apps / My Apps」视角。"
-            emptyAction={
-              hasActiveFilters ? (
-                <Button variant="secondary" size="sm" onClick={resetFilters}>
-                  <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
-                  清除全部筛选
-                </Button>
-              ) : undefined
-            }
-          />
+          <BlurCrossfade
+            id={`${scope}:${quickFilter}:${wpFilter}:${waveFilter}:${executorFilter}`}
+            duration={160}
+            blur={3}
+            morph="height"
+          >
+            <DataTable<BatchTraceRecord>
+              caption="跨应用水平批次追踪（Jira、PR、AI 来源、Verification Loop 与 Review）"
+              data={filteredTraces}
+              columns={columns}
+              getRowId={(row) => row.id}
+              activeRowId={activeRowId}
+              onRowClick={(row) => openInspector(row.unitId, 'trace')}
+              sorting={sorting}
+              onSortingChange={setSorting}
+              density="dense"
+              emptyTitle="当前筛选条件下暂无匹配 PR 追踪记录"
+              emptyDescription="请放宽工作包、波次或快捷状态筛选，或在顶栏切换「All Apps / My Apps」视角。"
+              emptyAction={
+                hasActiveFilters ? (
+                  <Button variant="secondary" size="sm" onClick={resetFilters}>
+                    <Terminal className="h-3.5 w-3.5" aria-hidden="true" />
+                    清除全部筛选
+                  </Button>
+                ) : undefined
+              }
+            />
+          </BlurCrossfade>
         </div>
       </section>
     </div>

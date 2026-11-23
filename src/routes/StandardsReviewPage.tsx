@@ -15,12 +15,22 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import {
   Badge,
   Button,
+  CheckboxField,
+  CollapsiblePanel,
   CopyCommandBar,
   EmptyState,
   HairlineTabs,
   StatusDot,
+  Tooltip,
   type SignalTone,
 } from '@/components/ui/Primitives';
+import {
+  ApprovalGates,
+  type ApprovalGate,
+} from '@/components/uipros/approval-gates';
+import { BlurCrossfade } from '@/components/uipros/blur-crossfade';
+import { NumberTicker } from '@/components/uipros/number-ticker';
+import { SegmentedControl } from '@/components/uipros/segmented-control-clean';
 import { useFactory } from '@/data/store';
 import {
   PROGRAM_TOTALS,
@@ -32,6 +42,7 @@ import {
 } from '@/data/types';
 
 type PageTab = 'standards' | 'signoff';
+type SignoffSubView = 'gates' | 'sme';
 type RuleLayerFilter = 'ALL' | VerificationRule['layer'];
 type SignoffFilter = 'PENDING' | 'ALL';
 
@@ -80,6 +91,7 @@ export function StandardsReviewPage() {
 
   const tabIdPrefix = useId();
   const [activeTab, setActiveTab] = useState<PageTab>('standards');
+  const [signoffSubView, setSignoffSubView] = useState<SignoffSubView>('gates');
   const [layerFilter, setLayerFilter] = useState<RuleLayerFilter>('ALL');
 
   // Signoff & SME Workbench state
@@ -239,6 +251,54 @@ export function StandardsReviewPage() {
     }
   };
 
+  const approvalGates = useMemo<ApprovalGate[]>(() => {
+    const agentByKind: Record<DecisionQueueItem['kind'], string> = {
+      UNREGISTERED_DB: 'Sybase MDA Scanner',
+      DIFF_SIGNOFF: 'WP-00 Parity Harness',
+      WAIVER: 'AgentCore Policy Gate',
+    };
+    const gateKindByItemKind: Record<DecisionQueueItem['kind'], ApprovalGate['kind']> = {
+      UNREGISTERED_DB: 'tool',
+      DIFF_SIGNOFF: 'file',
+      WAIVER: 'message',
+    };
+    const holdsByKind: Record<DecisionQueueItem['kind'], string[]> = {
+      UNREGISTERED_DB: ['Cutover 数据库硬锁解锁', 'Wave 放行签核'],
+      DIFF_SIGNOFF: ['WP-00 黄金基线封存', 'Blitzy 出口门禁放行'],
+      WAIVER: ['CI 豁免凭证签发', 'SHA-256 审计账本归档'],
+    };
+
+    return decisionQueue.map((item) => {
+      const evidenceRecord: Record<string, string> = {};
+      for (const e of item.evidence) {
+        evidenceRecord[e.label] = e.value;
+      }
+      if (item.jiraKey) {
+        evidenceRecord.Jira = item.jiraKey;
+      }
+      evidenceRecord['影响说明'] = item.detailText;
+
+      return {
+        id: item.id,
+        agent: agentByKind[item.kind],
+        kind: gateKindByItemKind[item.kind],
+        action: `[${item.unitCode}] ${item.title}`,
+        reason: item.subtitle,
+        status:
+          item.status === 'APPROVED'
+            ? 'approved'
+            : item.status === 'REJECTED'
+              ? 'rejected'
+              : 'open',
+        at: item.createdAt,
+        input: JSON.stringify(evidenceRecord, null, 2),
+        context: [item.detailText],
+        holds: holdsByKind[item.kind],
+        note: item.decisionNote,
+      };
+    });
+  }, [decisionQueue]);
+
   const ruleColumns = useMemo<DataTableColumn<VerificationRule>[]>(
     () => [
       {
@@ -387,6 +447,55 @@ export function StandardsReviewPage() {
             版本治理、下沉确定性 Verification Rules、只读 Review Bots 及人类 SME 签字队列。
           </p>
         </div>
+
+        {/* Inline Pending Counters */}
+        <div
+          className="mcp-surface flex flex-wrap items-center divide-x px-1 py-1.5"
+          style={{ borderColor: 'var(--line)' }}
+          aria-label="待签字与门禁汇总"
+        >
+          <div className="px-3 flex items-baseline gap-1.5">
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+              总待签字
+            </span>
+            <span
+              className="font-mono-tabular text-[13px] font-semibold"
+              style={{
+                color: pendingCounts.total > 0 ? 'var(--signal-warn)' : 'var(--ink)',
+              }}
+            >
+              <NumberTicker value={pendingCounts.total} duration={380} />
+            </span>
+          </div>
+          <div className="px-3 flex items-baseline gap-1.5" style={{ borderColor: 'var(--line)' }}>
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+              决策门禁
+            </span>
+            <span
+              className="font-mono-tabular text-[13px] font-semibold"
+              style={{
+                color:
+                  pendingCounts.pendingDecisions > 0 ? 'var(--signal-warn)' : 'var(--ink)',
+              }}
+            >
+              <NumberTicker value={pendingCounts.pendingDecisions} duration={380} />
+            </span>
+          </div>
+          <div className="px-3 flex items-baseline gap-1.5" style={{ borderColor: 'var(--line)' }}>
+            <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+              SME 规则
+            </span>
+            <span
+              className="font-mono-tabular text-[13px] font-semibold"
+              style={{
+                color:
+                  pendingCounts.pendingSmeRules > 0 ? 'var(--signal-warn)' : 'var(--ink)',
+              }}
+            >
+              <NumberTicker value={pendingCounts.pendingSmeRules} duration={380} />
+            </span>
+          </div>
+        </div>
       </header>
 
       {/* Top Hairline Tabs */}
@@ -411,15 +520,16 @@ export function StandardsReviewPage() {
         ]}
       />
 
-      {/* ====================================================================
-          Tab 1: agent-kit Releases, Verification Rules & Read-Only Review Bots
-          ==================================================================== */}
-      {activeTab === 'standards' && (
-        <div
-          role="tabpanel"
-          aria-labelledby={`${tabIdPrefix}-tab-standards`}
-          className="space-y-6"
-        >
+      <BlurCrossfade id={activeTab} duration={160} blur={3} morph="none">
+        {/* ====================================================================
+            Tab 1: agent-kit Releases, Verification Rules & Read-Only Review Bots
+            ==================================================================== */}
+        {activeTab === 'standards' ? (
+          <div
+            role="tabpanel"
+            aria-labelledby={`${tabIdPrefix}-tab-standards`}
+            className="space-y-6"
+          >
           {/* Section 1: Artifactory agent-kit Releases */}
           <section className="space-y-3" aria-label="Artifactory agent-kit 发版版本">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -619,7 +729,7 @@ export function StandardsReviewPage() {
                 </h2>
               </div>
               <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-                代码生成、独立审查与工单记录物理拆分为单职责 Bot；审查型 Bot 严格只读（Read-Only），无代码写权限。
+                代码生成（本机 Copilot / 黑盒 Blitzy）与只读预审物理分离；云端 Bots 跑在 AWS AgentCore Firecracker MicroVM 内并由 Cedar Policy 硬件级锁死权限。
               </p>
             </div>
 
@@ -640,7 +750,7 @@ export function StandardsReviewPage() {
                       <StatusDot tone="ok" label="Active" mono />
                     </div>
 
-                    <div>
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <Badge
                         tone={bot.permission === 'READ_ONLY' ? 'neutral' : 'accent'}
                         mono
@@ -649,6 +759,16 @@ export function StandardsReviewPage() {
                           ? 'READ_ONLY · 只读'
                           : 'RESTRICTED_JIRA_WRITE'}
                       </Badge>
+                      {bot.runtime && (
+                        <Badge
+                          tone={
+                            bot.runtime === 'Local Copilot Squad' ? 'neutral' : 'accent'
+                          }
+                          mono
+                        >
+                          {bot.runtime}
+                        </Badge>
+                      )}
                     </div>
 
                     <p
@@ -669,6 +789,17 @@ export function StandardsReviewPage() {
                     <div className="truncate" title={bot.trigger}>
                       触发：{bot.trigger}
                     </div>
+                    {bot.cedarPolicy && (
+                      <Tooltip content={bot.cedarPolicy} side="top">
+                        <div
+                          tabIndex={0}
+                          className="truncate cursor-help"
+                          style={{ color: 'var(--ink-muted)' }}
+                        >
+                          Cedar: {bot.cedarPolicy}
+                        </div>
+                      </Tooltip>
+                    )}
                     <div className="flex items-center justify-between">
                       <span>30d 运行 {bot.runs30d}</span>
                       <span
@@ -684,18 +815,148 @@ export function StandardsReviewPage() {
               ))}
             </div>
           </section>
-        </div>
-      )}
+          </div>
+        ) : (
+          /* ==================================================================
+             Tab 2: Human Sign-Off & SME Business Rule Workbench
+             ================================================================== */
+          <div
+            role="tabpanel"
+            aria-labelledby={`${tabIdPrefix}-tab-signoff`}
+            className="space-y-4"
+          >
+            <HairlineTabs<SignoffSubView>
+              ariaLabel="签字子视图切换"
+              size="sm"
+              value={signoffSubView}
+              onChange={setSignoffSubView}
+              options={[
+                {
+                  id: `${tabIdPrefix}-subtab-gates`,
+                  value: 'gates',
+                  label: '人类决策门禁 · Approval Gates',
+                  count: pendingCounts.pendingDecisions,
+                  dotTone: pendingCounts.pendingDecisions > 0 ? 'warn' : 'ok',
+                },
+                {
+                  id: `${tabIdPrefix}-subtab-sme`,
+                  value: 'sme',
+                  label: 'Modernize SME 业务规则台',
+                  count: pendingCounts.pendingSmeRules,
+                  dotTone: pendingCounts.pendingSmeRules > 0 ? 'warn' : 'ok',
+                },
+              ]}
+            />
 
-      {/* ====================================================================
-          Tab 2: Human Sign-Off & SME Business Rule Workbench
-          ==================================================================== */}
-      {activeTab === 'signoff' && (
-        <div
-          role="tabpanel"
-          aria-labelledby={`${tabIdPrefix}-tab-signoff`}
-          className="grid grid-cols-1 lg:grid-cols-[336px_minmax(0,1fr)] gap-4 items-start"
-        >
+            <BlurCrossfade id={signoffSubView} duration={160} blur={3} morph="none">
+              {signoffSubView === 'gates' ? (
+                <div
+                  role="tabpanel"
+                  aria-labelledby={`${tabIdPrefix}-subtab-gates`}
+                  className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 items-start"
+                >
+              <div className="min-w-0">
+                <ApprovalGates
+                  title="人类签核门禁 · Approval Gates"
+                  task="Sybase 隐式依赖登记 / WP-00 基线差签 / 结构化 CI 豁免"
+                  live
+                  gates={approvalGates}
+                  onDecide={(id, decision, value) => {
+                    const resolvedNote =
+                      value?.trim() ||
+                      (decision === 'edited' ? '附带修改条件批准（Approval Gate）' : undefined);
+                    void resolveDecisionItem(
+                      id,
+                      decision === 'rejected' ? 'REJECTED' : 'APPROVED',
+                      resolvedNote,
+                    );
+                  }}
+                />
+              </div>
+
+              <aside className="mcp-surface p-3.5 space-y-3" aria-label="签核关联应用与审计说明">
+                <div className="space-y-1">
+                  <h3 className="text-[12.5px] font-semibold" style={{ color: 'var(--ink)' }}>
+                    关联应用快查与依赖抽屉
+                  </h3>
+                  <p className="text-[11.5px] leading-[1.45]" style={{ color: 'var(--ink-muted)' }}>
+                    在卡片堆栈批准/退回前，可随时打开对应应用的侧边抽屉复核源码切片、Sybase 依赖锁与 WP-00 双跑指标。
+                  </p>
+                </div>
+
+                <ul className="divide-y" style={{ borderColor: 'var(--line-subtle)' }}>
+                  {decisionQueue.map((item) => (
+                    <li
+                      key={item.id}
+                      className="py-2 first:pt-0 last:pb-0 flex items-center justify-between gap-2"
+                      style={{ borderColor: 'var(--line-subtle)' }}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="font-mono-tabular text-[11.5px] font-semibold"
+                            style={{ color: 'var(--ink)' }}
+                          >
+                            {item.unitCode}
+                          </span>
+                          <Badge
+                            mono
+                            tone={
+                              item.status === 'APPROVED'
+                                ? 'ok'
+                                : item.status === 'REJECTED'
+                                  ? 'neutral'
+                                  : item.severity === 'HIGH'
+                                    ? 'danger'
+                                    : 'warn'
+                            }
+                          >
+                            {item.status === 'PENDING'
+                              ? '待批'
+                              : item.status === 'APPROVED'
+                                ? '已批准'
+                                : '已驳回'}
+                          </Badge>
+                        </div>
+                        <div
+                          className="mt-0.5 truncate text-[11.5px]"
+                          style={{ color: 'var(--ink-secondary)' }}
+                        >
+                          {item.title}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() =>
+                          openInspector(
+                            item.unitId,
+                            item.kind === 'UNREGISTERED_DB' ? 'deps' : 'trace',
+                          )
+                        }
+                        className="shrink-0"
+                      >
+                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                        详情
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+
+                <div
+                  className="mcp-well px-3 py-2 text-[11.5px] leading-[1.5]"
+                  style={{ color: 'var(--ink-muted)' }}
+                >
+                  每次批准、附注通过或驳回均实时追加至浏览器 Web Crypto SHA-256 防篡改账本，可在左下角「SHA-256 审计账本」逐条验签。
+                </div>
+              </aside>
+            </div>
+              ) : (
+                <div
+                  role="tabpanel"
+                  aria-labelledby={`${tabIdPrefix}-subtab-sme`}
+                  className="grid grid-cols-1 lg:grid-cols-[336px_minmax(0,1fr)] gap-4 items-start"
+                >
           {/* Left Master Queue */}
           <aside className="mcp-surface overflow-hidden" aria-label="人类签字与 SME 待办队列">
             <div
@@ -705,45 +966,27 @@ export function StandardsReviewPage() {
                 backgroundColor: 'var(--bg-sidebar)',
               }}
             >
-              <span className="text-[12px] font-medium" style={{ color: 'var(--ink)' }}>
-                待签字队列 ({pendingCounts.total})
+              <span
+                className="inline-flex items-center gap-1 text-[12px] font-medium truncate"
+                style={{ color: 'var(--ink)' }}
+              >
+                <span>待签字队列</span>
+                <span className="font-mono-tabular" style={{ color: 'var(--ink-muted)' }}>
+                  (<NumberTicker value={pendingCounts.total} duration={380} />)
+                </span>
               </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-pressed={signoffFilter === 'PENDING'}
-                  onClick={() => setSignoffFilter('PENDING')}
-                  className="rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                  style={{
-                    backgroundColor:
-                      signoffFilter === 'PENDING' ? 'var(--bg-surface)' : 'transparent',
-                    color: signoffFilter === 'PENDING' ? 'var(--ink)' : 'var(--ink-muted)',
-                    border:
-                      signoffFilter === 'PENDING'
-                        ? '1px solid var(--line-strong)'
-                        : '1px solid transparent',
-                  }}
-                >
-                  仅待处理
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={signoffFilter === 'ALL'}
-                  onClick={() => setSignoffFilter('ALL')}
-                  className="rounded-[4px] px-1.5 py-0.5 text-[11px] font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-                  style={{
-                    backgroundColor:
-                      signoffFilter === 'ALL' ? 'var(--bg-surface)' : 'transparent',
-                    color: signoffFilter === 'ALL' ? 'var(--ink)' : 'var(--ink-muted)',
-                    border:
-                      signoffFilter === 'ALL'
-                        ? '1px solid var(--line-strong)'
-                        : '1px solid transparent',
-                  }}
-                >
-                  全部记录
-                </button>
-              </div>
+              <SegmentedControl<SignoffFilter>
+                aria-label="筛选待签字队列"
+                variant="tray"
+                size="sm"
+                className="shrink-0"
+                value={signoffFilter}
+                onChange={setSignoffFilter}
+                options={[
+                  { value: 'PENDING', label: '仅待处理' },
+                  { value: 'ALL', label: '全部记录' },
+                ]}
+              />
             </div>
 
             {visibleSmeGroups.length === 0 && visibleDecisions.length === 0 ? (
@@ -1012,12 +1255,16 @@ export function StandardsReviewPage() {
                   return (
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <label className="inline-flex items-center gap-2 text-[12px] cursor-pointer select-none">
-                        <input
-                          type="checkbox"
+                        <CheckboxField
                           checked={allPendingChecked}
+                          indeterminate={
+                            pendingInGroup.length > 0 &&
+                            activeCheckedRuleIds.length > 0 &&
+                            !allPendingChecked
+                          }
                           disabled={pendingInGroup.length === 0}
-                          onChange={() => toggleSelectAllPendingInGroup(activeSmeGroup)}
-                          className="h-3.5 w-3.5 rounded-[3px] accent-[var(--accent)]"
+                          onCheckedChange={() => toggleSelectAllPendingInGroup(activeSmeGroup)}
+                          ariaLabel="全选当前应用全部待确认业务规则"
                         />
                         <span style={{ color: 'var(--ink-secondary)' }}>
                           全选待确认规则 ({activeCheckedRuleIds.length}/{pendingInGroup.length})
@@ -1077,15 +1324,13 @@ export function StandardsReviewPage() {
                             {/* Rule Code + Checkbox + Status */}
                             <div className="space-y-1.5">
                               <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  aria-label={`选择规则 ${rule.code}`}
+                                <CheckboxField
+                                  ariaLabel={`选择规则 ${rule.code}`}
                                   disabled={!isPending}
                                   checked={isChecked}
-                                  onChange={() =>
+                                  onCheckedChange={() =>
                                     toggleRuleChecked(activeSmeGroup.id, rule.id)
                                   }
-                                  className="h-3.5 w-3.5 rounded-[3px] accent-[var(--accent)]"
                                 />
                                 <span
                                   className="font-mono-tabular text-[12.5px] font-semibold"
@@ -1177,27 +1422,23 @@ export function StandardsReviewPage() {
                             </div>
                           )}
 
-                          {/* Bottom Bar: Expandable Original Code + WP-00 Example + Inline Actions */}
+                          {/* Bottom Bar: Base UI Collapsible Original Code + WP-00 Example + Inline Actions */}
                           <div
                             className="flex flex-wrap items-start justify-between gap-2 pt-2"
                             style={{ borderTop: '1px solid var(--line-subtle)' }}
                           >
-                            <details className="mcp-details flex-1 min-w-[240px] group">
-                              <summary
-                                className="inline-flex items-center gap-1.5 text-[12px] font-medium select-none"
-                                style={{ color: 'var(--accent)' }}
-                              >
-                                <ChevronRight
-                                  className="h-3.5 w-3.5 transition-transform group-open:rotate-90"
-                                  aria-hidden="true"
-                                />
-                                <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                <span>
-                                  展开源码 ({rule.sourceRef}) 与 WP-00 基线真值样例
-                                </span>
-                              </summary>
-
-                              <div className="mt-2.5 space-y-2.5">
+                            <CollapsiblePanel
+                              className="flex-1 min-w-[240px]"
+                              trigger={
+                                <>
+                                  <FileCode2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                  <span>
+                                    展开源码 ({rule.sourceRef}) 与 WP-00 基线真值样例
+                                  </span>
+                                </>
+                              }
+                            >
+                              <div className="pt-2.5 space-y-2.5">
                                 <div className="space-y-1">
                                   <div
                                     className="font-mono-tabular text-[11px]"
@@ -1244,7 +1485,7 @@ export function StandardsReviewPage() {
                                   </div>
                                 </div>
                               </div>
-                            </details>
+                            </CollapsiblePanel>
 
                             {isPending && !isRejecting && (
                               <div className="flex items-center gap-1.5 shrink-0">
@@ -1540,8 +1781,12 @@ export function StandardsReviewPage() {
               />
             )}
           </section>
-        </div>
-      )}
+                </div>
+              )}
+            </BlurCrossfade>
+          </div>
+        )}
+      </BlurCrossfade>
     </div>
   );
 }

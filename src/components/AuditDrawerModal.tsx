@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Cpu, Link2, ShieldCheck, UserCheck, Workflow } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Cpu, Lock, ShieldCheck, UserCheck, Workflow } from 'lucide-react';
 import { useFactory, type AuditChainVerification } from '@/data/store';
 import type { AuditEvent } from '@/data/types';
 import { shortHash } from '@/lib/crypto';
@@ -10,8 +10,10 @@ import {
   EmptyState,
   HairlineTabs,
   StatusDot,
-  type SignalTone,
 } from './ui/Primitives';
+import { AgentLedger, type LedgerEntry } from './uipros/agent-ledger-clean';
+import { BlurCrossfade } from './uipros/blur-crossfade';
+import { ShimmerText } from './uipros/shimmer-loader';
 
 export interface AuditDrawerModalProps {
   open: boolean;
@@ -20,11 +22,14 @@ export interface AuditDrawerModalProps {
 
 type CategoryFilter = 'ALL' | AuditEvent['category'];
 
-const CATEGORY_TONE: Record<AuditEvent['category'], SignalTone> = {
-  DECISION: 'warn',
-  FACT: 'accent',
-  EXECUTION: 'ok',
-};
+const LEDGER_NOW = Date.UTC(2027, 2, 22, 12, 0, 0);
+
+function parseLedgerTimestamp(ts: string, fallbackMs: number): number {
+  const trimmed = ts.trim();
+  const iso = trimmed.includes('T') ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) ? parsed : fallbackMs;
+}
 
 export function AuditDrawerModal({ open, onClose }: AuditDrawerModalProps) {
   const { auditLog, verifyAuditChain } = useFactory();
@@ -32,15 +37,78 @@ export function AuditDrawerModal({ open, onClose }: AuditDrawerModalProps) {
   const [verification, setVerification] = useState<AuditChainVerification | null>(null);
   const [verifying, setVerifying] = useState(false);
 
-  const filtered = [...auditLog]
-    .reverse()
-    .filter((evt) => (filter === 'ALL' ? true : evt.category === filter));
+  const { atById, clockNow } = useMemo(() => {
+    const map = new Map<string, number>();
+    let prevAt = LEDGER_NOW - 7 * 86_400_000;
+    let maxAt = LEDGER_NOW;
+
+    auditLog.forEach((evt, index) => {
+      const parsed = parseLedgerTimestamp(evt.timestamp, prevAt + 60_000);
+      const at =
+        parsed > prevAt
+          ? parsed
+          : Math.max(prevAt + 1_000, LEDGER_NOW - 30_000 + index * 1_000);
+      map.set(evt.id, at);
+      prevAt = at;
+      if (at > maxAt) {
+        maxAt = at;
+      }
+    });
+
+    return { atById: map, clockNow: maxAt };
+  }, [auditLog]);
+
+  const filtered = useMemo(
+    () =>
+      [...auditLog]
+        .reverse()
+        .filter((evt) => (filter === 'ALL' ? true : evt.category === filter)),
+    [auditLog, filter],
+  );
+
+  const ledgerEntries = useMemo<LedgerEntry[]>(
+    () =>
+      filtered.map((evt) => {
+        const ExecIcon =
+          evt.executorType === 'HUMAN'
+            ? UserCheck
+            : evt.executorType === 'AGENT'
+              ? Cpu
+              : Workflow;
+
+        return {
+          id: evt.id,
+          action: evt.summary,
+          target: evt.unitId ?? evt.category,
+          system: evt.sourceType,
+          icon: <ExecIcon aria-hidden="true" />,
+          at: atById.get(evt.id) ?? LEDGER_NOW,
+          change: [shortHash(evt.prevEventHash, 12), shortHash(evt.currentEventHash, 12)],
+          reversible: false,
+        };
+      }),
+    [atById, filtered],
+  );
+
+  const agentEvents = useMemo(
+    () => filtered.filter((evt) => Boolean(evt.agentMetadata)),
+    [filtered],
+  );
+
+  const verificationBannerId = verifying
+    ? 'verifying'
+    : verification
+      ? `${verification.valid ? 'valid' : 'invalid'}-${verification.checkedCount}-${verification.verifiedAt}`
+      : `idle-${auditLog.length}`;
 
   const handleVerify = async () => {
     setVerifying(true);
-    const result = await verifyAuditChain();
-    setVerification(result);
-    setVerifying(false);
+    try {
+      const result = await verifyAuditChain();
+      setVerification(result);
+    } finally {
+      setVerifying(false);
+    }
   };
 
   return (
@@ -58,44 +126,63 @@ export function AuditDrawerModal({ open, onClose }: AuditDrawerModalProps) {
     >
       <div className="space-y-4">
         {/* Verification Status Bar */}
-        <div
-          className="mcp-well flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
-          style={{
-            borderColor: verification
-              ? verification.valid
-                ? 'var(--signal-ok-line)'
-                : 'var(--signal-danger-line)'
-              : 'var(--line)',
-          }}
-        >
-          {verification ? (
-            verification.valid ? (
-              <StatusDot
-                tone="ok"
-                label="哈希链完整性校验通过"
-                sublabel={`逐条重算 ${verification.checkedCount} 条 · ${verification.verifiedAt}`}
-                mono
-              />
+        <BlurCrossfade id={verificationBannerId} duration={160} blur={3} morph="none">
+          <div
+            className="mcp-well flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
+            style={{
+              borderColor: verifying
+                ? 'var(--accent-line)'
+                : verification
+                  ? verification.valid
+                    ? 'var(--signal-ok-line)'
+                    : 'var(--signal-danger-line)'
+                  : 'var(--line)',
+            }}
+          >
+            {verifying ? (
+              <span className="inline-flex items-center gap-2 min-w-0">
+                <span
+                  className="h-1.5 w-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                  aria-hidden="true"
+                />
+                <ShimmerText duration={1.4} className="text-[12.5px] font-medium">
+                  正在调用 Web Crypto 重算 {auditLog.length} 条 SHA-256 哈希链…
+                </ShimmerText>
+              </span>
+            ) : verification ? (
+              verification.valid ? (
+                <StatusDot
+                  tone="ok"
+                  label="哈希链完整性校验通过"
+                  sublabel={`逐条重算 ${verification.checkedCount} 条 · ${verification.verifiedAt}`}
+                  mono
+                />
+              ) : (
+                <StatusDot
+                  tone="danger"
+                  label={`检测到链断裂：${verification.brokenEventId ?? 'UNKNOWN'}`}
+                  sublabel={verification.verifiedAt}
+                  mono
+                />
+              )
             ) : (
               <StatusDot
-                tone="danger"
-                label={`检测到链断裂：${verification.brokenEventId ?? 'UNKNOWN'}`}
-                sublabel={verification.verifiedAt}
-                mono
+                tone="accent"
+                label={`当前账本共 ${auditLog.length} 条不可变记录`}
+                sublabel="点击右上角调用浏览器 Web Crypto 实时验签"
               />
-            )
-          ) : (
-            <StatusDot
-              tone="accent"
-              label={`当前账本共 ${auditLog.length} 条不可变记录`}
-              sublabel="点击右上角调用浏览器 Web Crypto 实时验签"
-            />
-          )}
+            )}
 
-          <span className="font-mono-tabular text-[11.5px]" style={{ color: 'var(--ink-faint)' }}>
-            SHA-256 CHAIN
-          </span>
-        </div>
+            <span
+              className="inline-flex items-center gap-1 font-mono-tabular text-[11.5px]"
+              style={{ color: 'var(--ink-faint)' }}
+            >
+              <Lock className="h-3 w-3" aria-hidden="true" />
+              SHA-256 CHAIN · OBJECT LOCK
+            </span>
+          </div>
+        </BlurCrossfade>
 
         {/* Category Filter Tabs */}
         <HairlineTabs<CategoryFilter>
@@ -133,82 +220,54 @@ export function AuditDrawerModal({ open, onClose }: AuditDrawerModalProps) {
             description="切换其他审计分类查看完整哈希链记录。"
           />
         ) : (
-          <div
-            className="mcp-surface divide-y overflow-hidden"
-            style={{ borderColor: 'var(--line)' }}
-          >
-            {filtered.map((evt) => {
-              const catTone = CATEGORY_TONE[evt.category];
-              const ExecIcon =
-                evt.executorType === 'HUMAN'
-                  ? UserCheck
-                  : evt.executorType === 'AGENT'
-                    ? Cpu
-                    : Workflow;
+          <div className="space-y-3">
+            <AgentLedger
+              title="SHA-256 不可变账本流"
+              agent="AWS S3 Object Lock · 只追加不可撤回"
+              now={clockNow}
+              entries={ledgerEntries}
+            />
 
-              return (
-                <article
-                  key={evt.id}
-                  className="px-4 py-3"
-                  style={{ borderColor: 'var(--line-subtle)' }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className="font-mono-tabular text-[11.5px] font-semibold"
-                        style={{ color: 'var(--ink)' }}
-                      >
-                        {evt.id}
-                      </span>
-                      <Badge tone={catTone} mono>
-                        {evt.category}
-                      </Badge>
-                      {evt.unitId && <Badge mono>{evt.unitId}</Badge>}
-                      <span
-                        className="inline-flex items-center gap-1 text-[11.5px]"
-                        style={{ color: 'var(--ink-muted)' }}
-                      >
-                        <ExecIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                        {evt.executorType} · {evt.initiatorUser}
-                      </span>
-                    </div>
-                    <time
-                      className="font-mono-tabular text-[11.5px]"
-                      style={{ color: 'var(--ink-faint)' }}
-                    >
-                      {evt.timestamp}
-                    </time>
-                  </div>
-
-                  <p className="mt-1.5 text-[13px] font-medium text-pretty" style={{ color: 'var(--ink)' }}>
-                    {evt.summary}
-                  </p>
-
-                  {evt.agentMetadata && (
+            {agentEvents.length > 0 && (
+              <section
+                aria-label="Agent 执行器与 OBO 委托溯源"
+                className="mcp-well px-3.5 py-2.5 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11.5px] font-medium" style={{ color: 'var(--ink)' }}>
+                    Agent 执行器与 OBO 委托溯源
+                  </span>
+                  <Badge tone="neutral" mono>
+                    {agentEvents.length} 条 Agent 记录
+                  </Badge>
+                </div>
+                <div className="space-y-1.5">
+                  {agentEvents.map((evt) => (
                     <div
-                      className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] font-mono-tabular"
-                      style={{ color: 'var(--ink-muted)' }}
+                      key={evt.id}
+                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-1.5 text-[11px] font-mono-tabular first:pt-0 first:border-t-0"
+                      style={{
+                        borderTop: '1px solid var(--line-subtle)',
+                        color: 'var(--ink-muted)',
+                      }}
                     >
-                      <span>Tool: {evt.agentMetadata.tool}</span>
-                      <span>Model: {evt.agentMetadata.model}</span>
-                      <span>on_behalf_of: {evt.agentMetadata.onBehalfOf}</span>
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 min-w-0">
+                        <span className="font-semibold" style={{ color: 'var(--ink)' }}>
+                          {evt.id}
+                        </span>
+                        {evt.unitId && <Badge mono>{evt.unitId}</Badge>}
+                        <span>Tool: {evt.agentMetadata?.tool}</span>
+                        <span>Model: {evt.agentMetadata?.model}</span>
+                        <span>on_behalf_of: {evt.agentMetadata?.onBehalfOf}</span>
+                      </div>
+                      <time className="shrink-0" style={{ color: 'var(--ink-faint)' }}>
+                        {evt.timestamp}
+                      </time>
                     </div>
-                  )}
-
-                  <div
-                    className="mt-2 flex flex-wrap items-center justify-between gap-2 pt-2 text-[11px] font-mono-tabular"
-                    style={{ borderTop: '1px solid var(--line-subtle)', color: 'var(--ink-faint)' }}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <Link2 className="h-3 w-3" aria-hidden="true" />
-                      prev: {shortHash(evt.prevEventHash, 14)} → cur:{' '}
-                      <span style={{ color: 'var(--accent)' }}>{shortHash(evt.currentEventHash, 16)}</span>
-                    </span>
-                    <span>source: {evt.sourceType}</span>
-                  </div>
-                </article>
-              );
-            })}
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
       </div>

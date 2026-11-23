@@ -10,6 +10,7 @@ import React, {
 import { sha256Hex } from '@/lib/crypto';
 import { syncColorSchemeMeta } from '@/lib/motion';
 import {
+  INITIAL_AGENTCORE_GATEWAY_TOOLS,
   INITIAL_AGENT_KIT_RELEASES,
   INITIAL_DECISION_QUEUE,
   INITIAL_DEPENDENCIES,
@@ -22,6 +23,7 @@ import {
 } from './seed';
 import {
   CURRENT_ENGINEER,
+  type AgentCoreGatewayTool,
   type AgentKitRelease,
   type AppScope,
   type AuditEvent,
@@ -47,6 +49,7 @@ interface ControlPlaneState {
   dependencies: DependencyFact[];
   verificationRules: VerificationRule[];
   agentKitReleases: AgentKitRelease[];
+  gatewayTools: AgentCoreGatewayTool[];
   reviewBots: ReviewBotSpec[];
   smeGroups: SmeRuleGroup[];
   decisionQueue: DecisionQueueItem[];
@@ -84,7 +87,8 @@ export interface FactoryContextValue extends ControlPlaneState {
 
   // Lightweight real actions
   confirmDependencyFact: (depId: string, note?: string) => Promise<void>;
-  markKnowledgeSynced: (unitId: string) => Promise<void>;
+  markKnowledgeSynced: (unitId: string, mode?: 'agentcore' | 'local') => Promise<void>;
+  triggerAgentCorePrReview: (unitId: string, prNumber: string) => Promise<void>;
   confirmSmeRules: (
     groupId: string,
     ruleIds: string[],
@@ -167,18 +171,20 @@ async function buildInitialAuditLog(): Promise<AuditEvent[]> {
       id: 'EVT-1004',
       timestamp: '2027-03-21 07:45:12',
       category: 'EXECUTION',
-      initiatorUser: 'm.zhou@custody.internal',
+      initiatorUser: 'factory:pr-webhook',
       executorType: 'AGENT',
       agentMetadata: {
-        tool: 'agent-kit wiki sync (OpenWiki + Graphify)',
-        model: 'github-copilot-cli (gh auth)',
+        tool: 'AWS AgentCore Runtime (Knowledge Builder · MicroVM)',
+        model: 'Bedrock · Claude 3.7 Sonnet (VPC PrivateLink)',
         onBehalfOf: 'm.zhou@custody.internal',
       },
       sourceType: 'CODE',
       unitId: 'APP-MOD-02',
-      summary: 'Blitzy 出口 PR #538 通过独立 Review 与 WP-00 等价双跑，已刷新中央知识仓 26 条 Claims',
+      summary: 'Blitzy 出口 PR #538 通过 AgentCore 预审与 WP-00 双跑，MicroVM 已增量刷新中央知识仓 26 条 Claims',
       payloadJson: JSON.stringify({
         pr: 'PR #538',
+        runtime: 'AgentCore Runtime (MicroVM)',
+        cedarPolicy: 'WRITE_CENTRAL_KNOWLEDGE_ONLY',
         repoPath: 'migration-knowledge/app-mod-02/',
         claims: 26,
         graphNodes: 1140,
@@ -223,11 +229,44 @@ function makeDefaultState(theme: ThemeMode = 'light'): ControlPlaneState {
     dependencies: INITIAL_DEPENDENCIES,
     verificationRules: INITIAL_VERIFICATION_RULES,
     agentKitReleases: INITIAL_AGENT_KIT_RELEASES,
+    gatewayTools: INITIAL_AGENTCORE_GATEWAY_TOOLS,
     reviewBots: INITIAL_REVIEW_BOTS,
     smeGroups: INITIAL_SME_GROUPS,
     decisionQueue: INITIAL_DECISION_QUEUE,
     auditLog: [],
   };
+}
+
+function hydrateUnitsWithAgentCore(units: MigrationUnit[]): MigrationUnit[] {
+  const seedById = new Map(INITIAL_UNITS.map((u) => [u.id, u]));
+  return units.map((u) => {
+    const seedUnit = seedById.get(u.id);
+    if (!seedUnit) return u;
+    const seedPrByNum = new Map(seedUnit.activePrs.map((p) => [p.prNumber, p]));
+    return {
+      ...u,
+      knowledge: {
+        ...u.knowledge,
+        dispatchRuntime: u.knowledge.dispatchRuntime ?? seedUnit.knowledge.dispatchRuntime,
+      },
+      activePrs: u.activePrs.map((pr) => ({
+        ...pr,
+        autoReview: pr.autoReview ?? seedPrByNum.get(pr.prNumber)?.autoReview,
+      })),
+    };
+  });
+}
+
+function hydrateReviewBots(bots: ReviewBotSpec[]): ReviewBotSpec[] {
+  const seedById = new Map(INITIAL_REVIEW_BOTS.map((b) => [b.id, b]));
+  return bots.map((b) => {
+    const seedBot = seedById.get(b.id);
+    return {
+      ...b,
+      runtime: b.runtime ?? seedBot?.runtime,
+      cedarPolicy: b.cedarPolicy ?? seedBot?.cedarPolicy,
+    };
+  });
 }
 
 function loadInitialState(): ControlPlaneState {
@@ -249,7 +288,7 @@ function loadInitialState(): ControlPlaneState {
           return {
             theme: parsed.theme,
             waves: Array.isArray(parsed.waves) ? parsed.waves : INITIAL_WAVES,
-            units: parsed.units,
+            units: hydrateUnitsWithAgentCore(parsed.units),
             sharedTables: Array.isArray(parsed.sharedTables)
               ? parsed.sharedTables
               : INITIAL_SHARED_TABLES,
@@ -258,7 +297,10 @@ function loadInitialState(): ControlPlaneState {
               : INITIAL_DEPENDENCIES,
             verificationRules: parsed.verificationRules,
             agentKitReleases: parsed.agentKitReleases,
-            reviewBots: parsed.reviewBots,
+            gatewayTools: Array.isArray(parsed.gatewayTools)
+              ? parsed.gatewayTools
+              : INITIAL_AGENTCORE_GATEWAY_TOOLS,
+            reviewBots: hydrateReviewBots(parsed.reviewBots),
             smeGroups: Array.isArray(parsed.smeGroups) ? parsed.smeGroups : INITIAL_SME_GROUPS,
             decisionQueue: parsed.decisionQueue,
             auditLog: Array.isArray(parsed.auditLog) ? parsed.auditLog : [],
@@ -515,27 +557,41 @@ export function FactoryProvider({ children }: { children: React.ReactNode }) {
   );
 
   const markKnowledgeSynced = useCallback(
-    async (unitId: string) => {
+    async (unitId: string, mode: 'agentcore' | 'local' = 'agentcore') => {
       const unit = state.units.find((u) => u.id === unitId);
       if (!unit) return;
 
       const stamp = nowStamp().slice(0, 16);
       const nextClaims = Math.max(unit.knowledge.totalClaimsCount, 12);
       const nextNodes = unit.knowledge.graphNodes > 0 ? unit.knowledge.graphNodes : 420;
+      const isAgentCore = mode === 'agentcore';
+      const sessionId = `ac-kb-${Date.now().toString(36).slice(-5)}`;
+
       const evt = await appendAudit({
         category: 'EXECUTION',
-        initiatorUser: CURRENT_ENGINEER.email,
+        initiatorUser: isAgentCore
+          ? `${CURRENT_ENGINEER.email} (OBO → AgentCore)`
+          : CURRENT_ENGINEER.email,
         executorType: 'AGENT',
         agentMetadata: {
-          tool: 'agent-kit wiki sync (OpenWiki + Graphify)',
-          model: 'github-copilot-cli (gh auth)',
+          tool: isAgentCore
+            ? 'AWS AgentCore Runtime (Knowledge Builder · MicroVM)'
+            : 'agent-kit wiki sync (OpenWiki + Graphify)',
+          model: isAgentCore
+            ? 'Bedrock · Claude 3.7 Sonnet (VPC PrivateLink)'
+            : 'github-copilot-cli (gh auth)',
           onBehalfOf: CURRENT_ENGINEER.email,
         },
         sourceType: 'CODE',
         unitId,
-        summary: `记录本地知识同步完成：${unit.knowledge.centralRepoPath} (${nextClaims} 条 Claims SHA-256 全部一致)`,
+        summary: isAgentCore
+          ? `AgentCore Runtime (${sessionId}) 已刷新中央知识仓 ${unit.knowledge.centralRepoPath} (${nextClaims} 条 Claims SHA-256 一致)`
+          : `记录本地知识同步完成：${unit.knowledge.centralRepoPath} (${nextClaims} 条 Claims SHA-256 全部一致)`,
         payloadJson: JSON.stringify({
           unitId,
+          mode,
+          sessionId: isAgentCore ? sessionId : undefined,
+          cedarPolicy: isAgentCore ? 'WRITE_CENTRAL_KNOWLEDGE_ONLY' : undefined,
           centralRepoPath: unit.knowledge.centralRepoPath,
           claims: nextClaims,
           graphNodes: nextNodes,
@@ -555,8 +611,13 @@ export function FactoryProvider({ children }: { children: React.ReactNode }) {
               openwikiStatus: 'FRESH',
               staleClaimsCount: 0,
               totalClaimsCount: nextClaims,
-              lastPrSynced: `LOCAL_SYNC · ${stamp}`,
-              syncTrigger: 'LOCAL_SYNC',
+              lastPrSynced: isAgentCore
+                ? `AgentCore (${sessionId}) · ${stamp}`
+                : `LOCAL_SYNC · ${stamp}`,
+              syncTrigger: isAgentCore ? 'PR_READY' : 'LOCAL_SYNC',
+              dispatchRuntime: isAgentCore
+                ? 'AgentCore Runtime (Bedrock)'
+                : 'Local Copilot CLI',
               staleClaimFiles: [],
               graphifyStatus: wasMissingGraph ? 'INDEXED' : u.knowledge.graphifyStatus,
               graphNodes: wasMissingGraph ? nextNodes : u.knowledge.graphNodes,
@@ -564,21 +625,140 @@ export function FactoryProvider({ children }: { children: React.ReactNode }) {
               graphEdgesInferred: wasMissingGraph ? 44 : u.knowledge.graphEdgesInferred,
               graphEdgesAmbiguous: wasMissingGraph ? 6 : u.knowledge.graphEdgesAmbiguous,
               legacyCoverageNote: wasMissingGraph
-                ? '本地 tree-sitter AST 出图完成（零 LLM 成本），产物已同步至中央知识仓。'
+                ? 'MicroVM 内 tree-sitter AST 出图完成（零 LLM 成本），产物已同步至中央知识仓并接入 Gateway MCP。'
                 : u.knowledge.legacyCoverageNote,
               indexPreviewMd: u.knowledge.indexPreviewMd.includes('未建库')
-                ? `# ${u.code} ${u.name} (OKF v0.2)\n\n- [模块结构与入口流](overview.md) — 已通过本地 Copilot 通道生成\n- [外部依赖与数据库契约](dependencies.md) — 已绑定源码 SHA-256\n\n> Grounded Claims: ${nextClaims}/${nextClaims} SHA-256 哈希全部有效 (${stamp})`
+                ? `# ${u.code} ${u.name} (OKF v0.2)\n\n- [模块结构与入口流](overview.md) — 已由 AgentCore Runtime (Bedrock) 增量生成\n- [外部依赖与数据库契约](dependencies.md) — 已绑定源码 SHA-256\n\n> Grounded Claims: ${nextClaims}/${nextClaims} SHA-256 哈希全部有效 (${stamp})`
                 : `${u.knowledge.indexPreviewMd.replace(/⚠️[^\n]*/g, '✅ Claim 已重新哈希校验通过')}`,
             },
           };
         }),
+        gatewayTools: isAgentCore
+          ? prev.gatewayTools.map((t) =>
+              t.name === 'knowledge_index_read' || t.name === 'knowledge_graph_impact'
+                ? { ...t, calls24h: t.calls24h + 1 }
+                : t,
+            )
+          : prev.gatewayTools,
         auditLog: [...prev.auditLog, evt],
       }));
 
       pushToast(
         'success',
-        `${unit.code} 知识仓同步状态已刷新`,
-        `OpenWiki Claims (${nextClaims}/${nextClaims}) 与 Graphify 索引均已标记最新`,
+        isAgentCore
+          ? `${unit.code} AgentCore 知识刷新完成`
+          : `${unit.code} 本机知识同步已记录`,
+        `OpenWiki Claims (${nextClaims}/${nextClaims}) 与 Graphify 索引已更新至中央仓及 Gateway MCP`,
+      );
+    },
+    [appendAudit, pushToast, state.units],
+  );
+
+  const triggerAgentCorePrReview = useCallback(
+    async (unitId: string, prNumber: string) => {
+      const unit = state.units.find((u) => u.id === unitId);
+      const pr = unit?.activePrs.find((p) => p.prNumber === prNumber);
+      if (!unit || !pr) return;
+
+      const stamp = nowStamp().slice(0, 16);
+      const sessionId = `ac-rt-${Date.now().toString(36).slice(-6)}`;
+      const existing = pr.autoReview;
+      const verdict: 'PASS' | 'CHANGES_REQUESTED' =
+        pr.lintPassed && pr.schemaPassed && pr.wp00Passed && pr.dirtyFilesCount === 0
+          ? 'PASS'
+          : 'CHANGES_REQUESTED';
+
+      const evt = await appendAudit({
+        category: 'EXECUTION',
+        initiatorUser: `${CURRENT_ENGINEER.email} (OBO → AgentCore)`,
+        executorType: 'AGENT',
+        agentMetadata: {
+          tool: 'AWS AgentCore Runtime (PR Auto Reviewer · MicroVM)',
+          model: 'Bedrock · Claude 3.7 Sonnet (VPC PrivateLink)',
+          onBehalfOf: CURRENT_ENGINEER.email,
+        },
+        sourceType: 'EXTERNAL_WEBHOOK',
+        unitId,
+        summary: `Dispatch AgentCore PR Auto Review (${sessionId}) 复审 ${prNumber}：结论 ${verdict === 'PASS' ? 'PASS (放行人工独立审)' : 'CHANGES_REQUESTED'}`,
+        payloadJson: JSON.stringify({
+          unitId,
+          prNumber,
+          sessionId,
+          cedarPolicy: 'READ_ONLY_PR_COMMENT',
+          verdict,
+          gatewayTools: existing?.gatewayToolsUsed ?? [
+            'knowledge_graph_impact',
+            'knowledge_index_read',
+            'factory_db_dependencies',
+          ],
+        }),
+      });
+
+      setState((prev) => ({
+        ...prev,
+        units: prev.units.map((u) => {
+          if (u.id !== unitId) return u;
+          return {
+            ...u,
+            activePrs: u.activePrs.map((p) => {
+              if (p.prNumber !== prNumber) return p;
+              return {
+                ...p,
+                autoReview: {
+                  sessionId,
+                  runtime: 'AgentCore Runtime (MicroVM)',
+                  bedrockModel: 'Bedrock · Claude 3.7 Sonnet',
+                  cedarPolicy: 'READ_ONLY_PR_COMMENT',
+                  verdict,
+                  durationSec: existing?.durationSec ?? 28,
+                  gatewayToolsUsed: existing?.gatewayToolsUsed ?? [
+                    'knowledge_graph_impact',
+                    'knowledge_index_read',
+                    'agentkit_rules',
+                  ],
+                  findings: existing?.findings ?? [
+                    {
+                      reviewer: 'Blast-Radius',
+                      severity: 'PASS',
+                      summary: 'Graphify 影响面校验通过，未发现无关业务代码改动。',
+                      graphImpactNodes: 4,
+                    },
+                    {
+                      reviewer: 'Migration-Semantics',
+                      severity: pr.lintPassed ? 'PASS' : 'BLOCK',
+                      summary: pr.lintPassed
+                        ? 'OpenWiki 语义对照与静态规则无告警。'
+                        : pr.failingCheckSummary ?? 'Stage 1 静态语义检查未通过。',
+                    },
+                    {
+                      reviewer: 'Contract & Blitzy-Gate',
+                      severity: pr.wp00Passed && pr.schemaPassed ? 'PASS' : 'BLOCK',
+                      summary:
+                        pr.wp00Passed && pr.schemaPassed
+                          ? '证据 Manifest 与 WP-00 基线校验通过。'
+                          : '尚缺 WP-00 外部双跑或 Manifest 校验。',
+                    },
+                  ],
+                  reviewedAt: stamp,
+                },
+              };
+            }),
+          };
+        }),
+        gatewayTools: prev.gatewayTools.map((t) =>
+          (existing?.gatewayToolsUsed ?? ['knowledge_graph_impact', 'knowledge_index_read']).includes(
+            t.name,
+          )
+            ? { ...t, calls24h: t.calls24h + 1 }
+            : t,
+        ),
+        auditLog: [...prev.auditLog, evt],
+      }));
+
+      pushToast(
+        verdict === 'PASS' ? 'success' : 'warning',
+        `AgentCore 预审完成 · ${prNumber}`,
+        `MicroVM ${sessionId} (Cedar: READ_ONLY_PR_COMMENT) · 结论：${verdict === 'PASS' ? '预审放行，待人工独立 Review' : '已回写 Comment 要求修改'}`,
       );
     },
     [appendAudit, pushToast, state.units],
@@ -869,6 +1049,7 @@ export function FactoryProvider({ children }: { children: React.ReactNode }) {
       toggleTheme,
       confirmDependencyFact,
       markKnowledgeSynced,
+      triggerAgentCorePrReview,
       confirmSmeRules,
       resolveDecisionItem,
       evaluateCutoverDbLock,
@@ -892,6 +1073,7 @@ export function FactoryProvider({ children }: { children: React.ReactNode }) {
       toggleTheme,
       confirmDependencyFact,
       markKnowledgeSynced,
+      triggerAgentCorePrReview,
       confirmSmeRules,
       resolveDecisionItem,
       evaluateCutoverDbLock,

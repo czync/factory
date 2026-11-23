@@ -105,6 +105,337 @@
   --ease-calm: cubic-bezier(0.2, 0, 0, 1);
   --dur-fast: 110ms;
   --dur-overlay: 170ms;
+
+  /* UIPros / affectUI design token bridge (Direction A · Linear Light + Dark) */
+  --aui-font: var(--font-sans);
+  --aui-font-mono: var(--font-mono);
+  --aui-surface: var(--bg-surface);
+  --aui-subtle: var(--bg-well);
+  --aui-overlay: var(--bg-surface);
+  --aui-ink: var(--ink);
+  --aui-muted: var(--ink-muted);
+  --aui-placeholder: var(--ink-faint);
+  --aui-border: var(--line);
+  --aui-border-strong: var(--line-strong);
+  --aui-primary: var(--btn-primary-bg);
+  --aui-on-primary: var(--btn-primary-ink);
+  --aui-focus: var(--accent);
+  --aui-blue: var(--accent);
+  --aui-green: var(--signal-ok);
+  --aui-amber: var(--signal-warn);
+  --aui-orange: var(--signal-warn);
+  --aui-warning: var(--signal-warn);
+  --aui-red: var(--signal-danger);
+  --aui-danger: var(--signal-danger);
+  --aui-radius: var(--radius-sm);
+  --aui-radius-sm: var(--radius-xs);
+  --aui-radius-lg: var(--radius-md);
+  --aui-shadow-card: 0 0 0 1px var(--line), var(--shadow-sm);
+  --aui-ease: var(--ease-calm);
+  --ui-gate-w: 100%;
+}
+
+/* Harmonize UIPros/affectUI widgets with Direction A Light + Dark palette */
+:root .ui-afc {
+  --ui-afc-card: var(--bg-surface);
+  --ui-afc-strong: var(--ink);
+  --ui-afc-ink: var(--ink);
+  --ui-afc-text: var(--ink-secondary);
+  --ui-afc-muted: var(--ink-muted);
+  --ui-afc-faint: var(--ink-faint);
+  --ui-afc-line: var(--line);
+  --ui-afc-fill: var(--bg-well);
+  --ui-afc-hover: var(--bg-hover);
+  --ui-afc-select: var(--accent-soft);
+  --ui-afc-run-bg: var(--accent-soft);
+  --ui-afc-run-edge: var(--accent-line);
+  --ui-afc-done-bg: var(--bg-well);
+  --ui-afc-done-edge: var(--line);
+  --ui-afc-fail-bg: var(--signal-danger-soft);
+  --ui-afc-fail-edge: var(--signal-danger-line);
+  --ui-afc-crit: var(--signal-danger);
+  --ui-afc-warn: var(--signal-warn);
+  --ui-afc-note: var(--accent);
+  --ui-afc-focus: var(--accent);
+  --ui-afc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+}
+
+:root .ui-tam {
+  --ui-tam-tray: var(--bg-sidebar);
+  --ui-tam-card: var(--bg-surface);
+  --ui-tam-strong: var(--ink);
+  --ui-tam-ink: var(--ink);
+  --ui-tam-text: var(--ink-secondary);
+  --ui-tam-muted: var(--ink-muted);
+  --ui-tam-faint: var(--ink-faint);
+  --ui-tam-line: var(--line);
+  --ui-tam-fill: var(--bg-well);
+  --ui-tam-well: var(--bg-well);
+  --ui-tam-rail: var(--line-strong);
+  --ui-tam-accent: var(--accent);
+  --ui-tam-used: var(--accent);
+  --ui-tam-glint: var(--accent-line);
+  --ui-tam-off: var(--line);
+  --ui-tam-brand-bg: var(--accent-soft);
+  --ui-tam-brand-fg: var(--accent);
+  --ui-tam-ok-bg: var(--signal-ok-soft);
+  --ui-tam-ok-fg: var(--signal-ok);
+  --ui-tam-warn-bg: var(--signal-warn-soft);
+  --ui-tam-warn-fg: var(--signal-warn);
+  --ui-tam-danger-bg: var(--signal-danger-soft);
+  --ui-tam-danger-fg: var(--signal-danger);
+  --ui-tam-solid: var(--btn-primary-bg);
+  --ui-tam-on-solid: var(--btn-primary-ink);
+  --ui-tam-focus: var(--accent);
+  --ui-tam-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+}
+
+:root .ui-gate {
+  --ui-gate-tray: var(--bg-sidebar);
+  --ui-gate-card: var(--bg-surface);
+  --ui-gate-strong: var(--ink);
+  --ui-gate-ink: var(--ink);
+  --ui-gate-text: var(--ink-secondary);
+  --ui-gate-muted: var(--ink-muted);
+  --ui-gate-faint: var(--ink-faint);
+  --ui-gate-line: var(--line);
+  --ui-gate-fill: var(--bg-well);
+  --ui-gate-well: var(--bg-well);
+  --ui-gate-rail: var(--line-strong);
+  --ui-gate-wait-bg: var(--signal-warn-soft);
+  --ui-gate-wait-fg: var(--signal-warn);
+  --ui-gate-ok-bg: var(--signal-ok-soft);
+  --ui-gate-ok-fg: var(--signal-ok);
+  --ui-gate-danger-bg: var(--signal-danger-soft);
+  --ui-gate-danger-fg: var(--signal-danger);
+  --ui-gate-brand-bg: var(--accent-soft);
+  --ui-gate-brand-fg: var(--accent);
+  --ui-gate-add-bg: var(--signal-ok-soft);
+  --ui-gate-add-fg: var(--signal-ok);
+  --ui-gate-del-bg: var(--signal-danger-soft);
+  --ui-gate-del-fg: var(--signal-danger);
+  --ui-gate-solid: var(--btn-primary-bg);
+  --ui-gate-on-solid: var(--btn-primary-ink);
+  --ui-gate-focus: var(--accent);
+  --ui-gate-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+}
+
+:root .ui-segc {
+  --ui-segc-ink: var(--ink);
+  --ui-segc-text: var(--ink-secondary);
+  --ui-segc-hover-text: var(--ink);
+  --ui-segc-line: var(--line);
+  --ui-segc-wash: color-mix(in srgb, var(--ink) 4%, transparent);
+  --ui-segc-fill: var(--bg-hover);
+  --ui-segc-track: var(--bg-well);
+  --ui-segc-card: var(--bg-surface);
+  --ui-segc-card-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --ui-segc-accent: var(--accent);
+  --ui-segc-accent-soft: var(--accent-soft);
+  --ui-segc-focus: var(--accent);
+  font-family: var(--font-sans);
+}
+
+:root .ui-segc__icon {
+  color: var(--ink-muted);
+}
+
+:root .ui-segc__opt[data-active] .ui-segc__icon {
+  color: var(--ink);
+}
+
+:root .ui-cbc {
+  --ui-cbc-card: var(--bg-surface);
+  --ui-cbc-ink: var(--ink);
+  --ui-cbc-strong: var(--ink);
+  --ui-cbc-text: var(--ink-secondary);
+  --ui-cbc-muted: var(--ink-muted);
+  --ui-cbc-faint: var(--ink-faint);
+  --ui-cbc-line: var(--line);
+  --ui-cbc-wash: color-mix(in srgb, var(--ink) 4%, transparent);
+  --ui-cbc-fill: var(--bg-hover);
+  --ui-cbc-up: var(--signal-ok);
+  --ui-cbc-up-bg: var(--signal-ok-soft);
+  --ui-cbc-down: var(--signal-danger);
+  --ui-cbc-down-bg: var(--signal-danger-soft);
+  --ui-cbc-c1: var(--accent);
+  --ui-cbc-c2: color-mix(in srgb, var(--accent) 68%, transparent);
+  --ui-cbc-c3: color-mix(in srgb, var(--accent) 44%, transparent);
+  --ui-cbc-c4: color-mix(in srgb, var(--accent) 24%, transparent);
+  --ui-cbc-c5: var(--line-strong);
+  --ui-cbc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --ui-cbc-focus: var(--accent);
+  font-family: var(--font-sans);
+}
+
+:root .ui-alc {
+  --ui-alc-panel: var(--bg-surface);
+  --ui-alc-card: var(--bg-surface);
+  --ui-alc-strong: var(--ink);
+  --ui-alc-ink: var(--ink);
+  --ui-alc-text: var(--ink-secondary);
+  --ui-alc-muted: var(--ink-muted);
+  --ui-alc-faint: var(--ink-faint);
+  --ui-alc-line: var(--line);
+  --ui-alc-fill: var(--bg-hover);
+  --ui-alc-accent: var(--accent);
+  --ui-alc-focus: var(--accent);
+  --ui-alc-undo-bg: var(--accent-soft);
+  --ui-alc-also-bg: color-mix(in srgb, var(--accent) 6%, transparent);
+  --ui-alc-also-fg: var(--accent);
+  --ui-alc-kept-bg: var(--signal-warn-soft);
+  --ui-alc-kept-fg: var(--signal-warn);
+  --ui-alc-ok-fg: var(--signal-ok);
+  --ui-alc-strike: var(--ink-muted);
+  --ui-alc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  font-family: var(--font-sans);
+}
+
+:root .ui-alc__row:hover {
+  background: var(--bg-hover);
+}
+
+:root .ui-alc__row[data-preview] .ui-alc__act,
+:root .ui-alc__flag[data-kind="also"] {
+  background: var(--accent-soft);
+}
+
+:root .ui-alc__flag[data-kind="kept"] {
+  background: var(--signal-warn-soft);
+}
+
+:root .ui-twc {
+  --ui-twc-card: var(--bg-surface);
+  --ui-twc-strong: var(--ink);
+  --ui-twc-ink: var(--ink);
+  --ui-twc-text: var(--ink-secondary);
+  --ui-twc-muted: var(--ink-muted);
+  --ui-twc-faint: var(--ink-faint);
+  --ui-twc-line: var(--line);
+  --ui-twc-grid: var(--line-subtle);
+  --ui-twc-guide: var(--line);
+  --ui-twc-hover: var(--bg-hover);
+  --ui-twc-selected: var(--accent-soft);
+  --ui-twc-fill: var(--bg-well);
+  --ui-twc-wash: var(--bg-well);
+  --ui-twc-accent: var(--accent);
+  --ui-twc-now: color-mix(in srgb, var(--accent) 55%, transparent);
+  --ui-twc-agent-bg: var(--bg-well);
+  --ui-twc-agent-edge: var(--line-strong);
+  --ui-twc-agent-ink: var(--ink-secondary);
+  --ui-twc-agent-mark: var(--ink-faint);
+  --ui-twc-llm-bg: var(--accent-soft);
+  --ui-twc-llm-edge: var(--accent-line);
+  --ui-twc-llm-ink: var(--accent);
+  --ui-twc-llm-mark: color-mix(in srgb, var(--accent) 75%, transparent);
+  --ui-twc-tool-bg: light-dark(rgba(29, 114, 134, 0.09), rgba(86, 178, 198, 0.14));
+  --ui-twc-tool-edge: light-dark(rgba(29, 114, 134, 0.25), rgba(86, 178, 198, 0.3));
+  --ui-twc-tool-ink: light-dark(#1d7286, #56b2c6);
+  --ui-twc-tool-mark: light-dark(rgba(29, 114, 134, 0.65), rgba(86, 178, 198, 0.72));
+  --ui-twc-error-bg: var(--signal-danger-soft);
+  --ui-twc-error-edge: var(--signal-danger-line);
+  --ui-twc-error-ink: var(--signal-danger);
+  --ui-twc-error-mark: color-mix(in srgb, var(--signal-danger) 70%, transparent);
+  --ui-twc-brand-bg: var(--accent-soft);
+  --ui-twc-brand-fg: var(--accent);
+  --ui-twc-ok-bg: var(--signal-ok-soft);
+  --ui-twc-ok-fg: var(--signal-ok);
+  --ui-twc-slow-bg: var(--signal-warn-soft);
+  --ui-twc-slow-fg: var(--signal-warn);
+  --ui-twc-focus: var(--accent);
+  --ui-twc-shine: light-dark(rgba(17, 19, 24, 0.22), rgba(238, 240, 244, 0.35));
+  --ui-twc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --ui-twc-pop: 0 0 0 1px var(--line-strong), var(--shadow-overlay);
+  font-family: var(--font-sans);
+}
+
+:root .ui-twc__tick[data-zero] {
+  background: var(--line-strong);
+}
+
+:root .ui-cmc {
+  --ui-cmc-panel: var(--bg-surface);
+  --ui-cmc-card: var(--bg-surface);
+  --ui-cmc-strong: var(--ink);
+  --ui-cmc-ink: var(--ink);
+  --ui-cmc-text: var(--ink-secondary);
+  --ui-cmc-muted: var(--ink-muted);
+  --ui-cmc-faint: var(--ink-faint);
+  --ui-cmc-line: var(--line);
+  --ui-cmc-accent: var(--accent);
+  --ui-cmc-shine: light-dark(rgba(17, 19, 24, 0.22), rgba(238, 240, 244, 0.35));
+  --ui-cmc-hover: var(--bg-hover);
+  --ui-cmc-high: var(--signal-warn);
+  --ui-cmc-high-bg: var(--signal-warn-soft);
+  --ui-cmc-full: var(--signal-danger);
+  --ui-cmc-full-bg: var(--signal-danger-soft);
+  --ui-cmc-system-bg: var(--bg-well);
+  --ui-cmc-system-edge: var(--line-strong);
+  --ui-cmc-system-ink: var(--ink-secondary);
+  --ui-cmc-tools-bg: light-dark(rgba(29, 114, 134, 0.09), rgba(86, 178, 198, 0.14));
+  --ui-cmc-tools-edge: light-dark(rgba(29, 114, 134, 0.25), rgba(86, 178, 198, 0.3));
+  --ui-cmc-tools-ink: light-dark(#1d7286, #56b2c6);
+  --ui-cmc-memory-bg: light-dark(rgba(91, 88, 166, 0.09), rgba(145, 142, 224, 0.14));
+  --ui-cmc-memory-edge: light-dark(rgba(91, 88, 166, 0.24), rgba(145, 142, 224, 0.3));
+  --ui-cmc-memory-ink: light-dark(#53509e, #a8a5f0);
+  --ui-cmc-file-bg: var(--accent-soft);
+  --ui-cmc-file-edge: var(--accent-line);
+  --ui-cmc-file-ink: var(--accent);
+  --ui-cmc-chat-bg: light-dark(rgba(125, 86, 158, 0.09), rgba(176, 138, 212, 0.14));
+  --ui-cmc-chat-edge: light-dark(rgba(125, 86, 158, 0.24), rgba(176, 138, 212, 0.3));
+  --ui-cmc-chat-ink: light-dark(#6f4b8e, #c49ee6);
+  --ui-cmc-result-bg: var(--signal-warn-soft);
+  --ui-cmc-result-edge: var(--signal-warn-line);
+  --ui-cmc-result-ink: var(--signal-warn);
+  --ui-cmc-summary-bg: var(--signal-ok-soft);
+  --ui-cmc-summary-edge: var(--signal-ok-line);
+  --ui-cmc-summary-ink: var(--signal-ok);
+  --ui-cmc-free-edge: var(--line-strong);
+  --ui-cmc-free-hatch: var(--line-subtle);
+  --ui-cmc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  --ui-cmc-button: var(--ui-cmc-shadow);
+  --ui-cmc-button-hover: 0 0 0 1px var(--line-strong), var(--shadow-sm);
+  --ui-cmc-pop: 0 0 0 1px var(--line-strong), var(--shadow-overlay);
+  font-family: var(--font-sans);
+}
+
+:root .ui-cmc__pct:not([data-level]) {
+  background: var(--bg-well);
+}
+
+:root .ui-progressc {
+  --ui-pgc-card: var(--bg-surface);
+  --ui-pgc-strong: var(--ink);
+  --ui-pgc-ink: var(--ink);
+  --ui-pgc-muted: var(--ink-muted);
+  --ui-pgc-faint: var(--ink-faint);
+  --ui-pgc-icon: var(--ink-muted);
+  --ui-pgc-ring: var(--line-strong);
+  --ui-pgc-track: var(--line);
+  --ui-pgc-hover: var(--bg-hover);
+  --ui-pgc-accent: var(--accent);
+  --ui-pgc-on-accent: light-dark(#ffffff, #0c0d10);
+  --ui-pgc-shine: light-dark(rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.55));
+  --ui-pgc-focus: var(--accent);
+  --ui-pgc-shadow: 0 0 0 1px var(--line), var(--shadow-sm);
+  font-family: var(--font-sans);
+}
+
+:root .ui-nt {
+  --ui-nt-lh: 1.15em;
+  color: inherit;
+}
+
+:root .ui-bx {
+  color: inherit;
+}
+
+:root .ui-shm,
+:root .ui-shm-text {
+  --ui-shm-base: color-mix(in srgb, var(--ink) 7%, var(--bg-surface));
+  --ui-shm-glow: light-dark(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.08));
+  --ui-shm-text: var(--ink-muted);
+  --ui-shm-text-glow: var(--ink);
 }
 
 @layer base {
@@ -380,11 +711,20 @@
     color: var(--ink);
   }
 
-  .mcp-tab[aria-selected="true"]::after {
+  .mcp-tab:not([data-motion-indicator="true"])[aria-selected="true"]::after {
     content: "";
     position: absolute;
     inset: auto 0 0;
     border-block-end: 1.5px solid var(--accent);
+  }
+
+  @media (forced-colors: active), (prefers-reduced-motion: reduce) {
+    .mcp-tab[aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0;
+      border-block-end: 1.5px solid var(--accent);
+    }
   }
 
   /* ==========================================================================
@@ -627,119 +967,93 @@
   }
 
   /* ==========================================================================
-     Modern Web Guidance: Native <dialog> Centered Modal (.mcp-dialog)
-     - Never sets display unconditionally on dialog
-     - Top-layer @starting-style + allow-discrete + [data-closing] fallback
-     - Bidirectional overscroll containment on :modal and ::backdrop
+     Base UI Overlays & Primitives (.bui-*)
+     - Driven by [data-starting-style] / [data-ending-style]
+     - Uses 100svh (never vh/dvh) for drawers
+     - Calm 110ms/170ms timing with prefers-reduced-motion compliance
      ========================================================================== */
 
-  dialog.mcp-dialog {
-    margin: auto;
-    padding: 0;
+  .bui-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background-color: var(--scrim);
+    opacity: 1;
+    overscroll-behavior: contain;
+    transition: opacity var(--dur-overlay) var(--ease-calm);
+  }
+
+  .bui-backdrop[data-starting-style],
+  .bui-backdrop[data-ending-style] {
+    opacity: 0;
+  }
+
+  .bui-dialog-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 51;
+    transform: translate(-50%, -50%);
+    width: min(var(--dialog-width, 860px), calc(100vw - 2rem));
+    max-height: min(84svh, 800px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     border: 1px solid var(--line-strong);
     border-radius: var(--radius-lg);
     background: var(--bg-surface);
     color: var(--ink);
-    width: min(var(--dialog-width, 860px), calc(100vw - 2rem));
-    max-width: none;
-    max-height: min(84svh, 800px);
-    overflow: hidden;
-    opacity: 0;
     box-shadow: var(--shadow-overlay);
+    overscroll-behavior: contain;
+    outline: none;
+    opacity: 1;
+    transition:
+      opacity var(--dur-overlay) var(--ease-calm),
+      transform var(--dur-overlay) var(--ease-calm);
+  }
 
-    transition-property: opacity, transform, display, overlay;
-    transition-duration: var(--dur-overlay);
-    transition-timing-function: var(--ease-calm);
-    transition-behavior: allow-discrete;
+  .bui-dialog-popup[data-starting-style],
+  .bui-dialog-popup[data-ending-style] {
+    opacity: 0;
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    dialog.mcp-dialog {
-      transform: translateY(6px);
+    .bui-dialog-popup[data-starting-style],
+    .bui-dialog-popup[data-ending-style] {
+      transform: translate(-50%, calc(-50% + 6px));
     }
   }
 
-  dialog.mcp-dialog:modal {
-    overscroll-behavior: contain;
-  }
-
-  dialog.mcp-dialog[open] {
-    display: flex;
-    flex-direction: column;
-  }
-
-  dialog.mcp-dialog[open]:where(:not([data-closing])) {
-    opacity: 1;
-
-    @starting-style {
-      opacity: 0;
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-      transform: translateY(0);
-
-      @starting-style {
-        transform: translateY(6px);
-      }
-    }
-  }
-
-  dialog.mcp-dialog::backdrop {
-    background-color: transparent;
-    overflow: hidden;
-    overscroll-behavior: contain;
-    transition-property: background-color, display, overlay;
-    transition-duration: var(--dur-overlay);
-    transition-timing-function: var(--ease-calm);
-    transition-behavior: allow-discrete;
-  }
-
-  dialog.mcp-dialog[open]:where(:not([data-closing]))::backdrop {
-    background-color: var(--scrim);
-
-    @starting-style {
-      background-color: transparent;
-    }
-  }
-
-  /* ==========================================================================
-     Modern Web Guidance: Native <dialog> Right-Side Inspector Drawer (.mcp-drawer)
-     - Uses 100svh (never vh/dvh) to prevent iOS Safari height jump
-     - 580px-620px on desktop, full width on mobile
-     - Calm 170ms slide-over via @starting-style + [data-closing] fallback
-     ========================================================================== */
-
-  dialog.mcp-drawer {
+  .bui-drawer-popup {
     position: fixed;
     inset-block: 0;
     inset-inline-end: 0;
     inset-inline-start: auto;
-    margin: 0;
-    padding: 0;
+    z-index: 51;
     width: min(var(--drawer-width, 580px), 100vw);
-    max-width: none;
     height: 100svh;
     max-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     border: 0;
     border-inline-start: 1px solid var(--line-strong);
     border-radius: var(--radius-lg) 0 0 var(--radius-lg);
     background: var(--bg-surface);
     color: var(--ink);
-    overflow: hidden;
-    opacity: 0;
     box-shadow: var(--shadow-drawer);
-
-    transition-property: opacity, transform, display, overlay;
-    transition-duration: var(--dur-overlay);
-    transition-timing-function: var(--ease-calm);
-    transition-behavior: allow-discrete;
+    overscroll-behavior: contain;
+    outline: none;
+    opacity: 1;
+    transition:
+      opacity var(--dur-overlay) var(--ease-calm),
+      transform var(--dur-overlay) var(--ease-calm);
   }
 
-  dialog.mcp-drawer[data-side="left"] {
-    --drawer-width: 260px;
-    width: min(var(--drawer-width), 82vw);
+  .bui-drawer-popup[data-side="left"] {
     inset-inline-start: 0;
     inset-inline-end: auto;
+    width: min(var(--drawer-width, 268px), 84vw);
     border-inline-start: 0;
     border-inline-end: 1px solid var(--line-strong);
     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
@@ -747,98 +1061,186 @@
   }
 
   @media (max-width: 639px) {
-    dialog.mcp-drawer {
+    .bui-drawer-popup {
       width: 100vw;
       border-inline-start: 0;
       border-radius: 0;
     }
 
-    dialog.mcp-drawer[data-side="left"] {
-      width: min(260px, 82vw);
+    .bui-drawer-popup[data-side="left"] {
+      width: min(var(--drawer-width, 268px), 84vw);
       border-inline-end: 1px solid var(--line-strong);
       border-radius: 0;
     }
   }
 
+  .bui-drawer-popup[data-starting-style],
+  .bui-drawer-popup[data-ending-style] {
+    opacity: 0;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
-    dialog.mcp-drawer {
+    .bui-drawer-popup[data-starting-style],
+    .bui-drawer-popup[data-ending-style] {
       transform: translateX(100%);
     }
 
-    dialog.mcp-drawer[data-side="left"] {
+    .bui-drawer-popup[data-side="left"][data-starting-style],
+    .bui-drawer-popup[data-side="left"][data-ending-style] {
       transform: translateX(-100%);
     }
   }
 
-  dialog.mcp-drawer:modal {
-    overscroll-behavior: contain;
-  }
-
-  dialog.mcp-drawer[open] {
-    display: flex;
-    flex-direction: column;
-  }
-
-  dialog.mcp-drawer[open]:where(:not([data-closing])) {
+  .bui-select-popup {
+    min-width: var(--anchor-width);
+    max-height: min(300px, var(--available-height));
+    overflow-y: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line-strong);
+    background: var(--bg-surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-overlay);
+    padding: 4px;
+    outline: none;
     opacity: 1;
+    transition:
+      opacity var(--dur-fast) var(--ease-calm),
+      transform var(--dur-fast) var(--ease-calm);
+  }
 
-    @starting-style {
-      opacity: 0;
-    }
+  .bui-select-popup[data-starting-style],
+  .bui-select-popup[data-ending-style] {
+    opacity: 0;
+  }
 
-    @media (prefers-reduced-motion: no-preference) {
-      transform: translateX(0);
-
-      @starting-style {
-        transform: translateX(100%);
-      }
+  @media (prefers-reduced-motion: no-preference) {
+    .bui-select-popup[data-starting-style],
+    .bui-select-popup[data-ending-style] {
+      transform: translateY(-2px);
     }
   }
 
-  dialog.mcp-drawer[data-side="left"][open]:where(:not([data-closing])) {
-    @media (prefers-reduced-motion: no-preference) {
-      transform: translateX(0);
+  .bui-select-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+  }
 
-      @starting-style {
-        transform: translateX(-100%);
-      }
+  .bui-select-item[data-highlighted] {
+    background: var(--bg-hover);
+    color: var(--ink);
+  }
+
+  .bui-select-item[data-selected] {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .bui-select-item[data-disabled] {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  .bui-tooltip-popup {
+    max-width: 280px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--ink);
+    color: var(--bg-surface);
+    padding: 5px 8px;
+    font-size: 11.5px;
+    line-height: 1.35;
+    box-shadow: var(--shadow-overlay);
+    opacity: 1;
+    transition:
+      opacity var(--dur-fast) var(--ease-calm),
+      transform var(--dur-fast) var(--ease-calm);
+  }
+
+  .bui-tooltip-popup[data-starting-style],
+  .bui-tooltip-popup[data-ending-style] {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .bui-tooltip-popup[data-starting-style],
+    .bui-tooltip-popup[data-ending-style] {
+      transform: scale(0.97);
     }
   }
 
-  dialog.mcp-drawer::backdrop {
-    background-color: transparent;
+  .bui-collapsible-panel {
+    height: var(--collapsible-panel-height);
     overflow: hidden;
-    overscroll-behavior: contain;
-    transition-property: background-color, display, overlay;
-    transition-duration: var(--dur-overlay);
-    transition-timing-function: var(--ease-calm);
-    transition-behavior: allow-discrete;
+    opacity: 1;
+    transition:
+      height var(--dur-overlay) var(--ease-calm),
+      opacity var(--dur-overlay) var(--ease-calm);
   }
 
-  dialog.mcp-drawer[open]:where(:not([data-closing]))::backdrop {
-    background-color: var(--scrim);
+  .bui-collapsible-panel[data-starting-style],
+  .bui-collapsible-panel[data-ending-style] {
+    height: 0;
+    opacity: 0;
+  }
 
-    @starting-style {
-      background-color: transparent;
-    }
+  .bui-collapsible-panel[hidden]:not([hidden="until-found"]) {
+    display: none;
+  }
+
+  .bui-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg-surface);
+    color: var(--btn-primary-ink);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color var(--dur-fast) var(--ease-fast),
+      border-color var(--dur-fast) var(--ease-fast);
+  }
+
+  .bui-checkbox[data-checked],
+  .bui-checkbox[data-indeterminate] {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .bui-checkbox:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .bui-checkbox[data-disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    dialog.mcp-dialog,
-    dialog.mcp-dialog::backdrop,
-    dialog.mcp-drawer,
-    dialog.mcp-drawer::backdrop {
-      transition-duration: 100ms;
+    .bui-backdrop,
+    .bui-dialog-popup,
+    .bui-drawer-popup,
+    .bui-select-popup,
+    .bui-tooltip-popup,
+    .bui-collapsible-panel {
+      transition-duration: 0.01ms;
     }
-  }
-
-  /* Native <details> disclosure reset */
-  details.mcp-details summary {
-    list-style: none;
-    cursor: pointer;
-  }
-
-  details.mcp-details summary::-webkit-details-marker {
-    display: none;
   }
 }

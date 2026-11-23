@@ -88,6 +88,8 @@ export const PROGRAM_TOTALS = {
   latestAgentKitVersion: 'v1.4.0',
   centralKnowledgeRepo: 'git@ghe.custody.internal:migration/migration-knowledge.git',
   artifactoryRegistry: 'https://artifactory.custody.internal/artifactory/api/npm/mig-agent-kit/',
+  agentCoreRegion: 'ap-southeast-1 (VPC PrivateLink)',
+  agentCoreGatewayEndpoint: 'mcp://agentcore-gw.custody.internal/v1',
 } as const;
 
 export interface WaveRecord {
@@ -101,6 +103,37 @@ export interface WaveRecord {
   dbTablesReady: number;
   batchChangeReady: boolean;
   note: string;
+}
+
+export interface AgentCoreFinding {
+  reviewer: 'Blast-Radius' | 'Migration-Semantics' | 'Contract & Blitzy-Gate';
+  severity: 'BLOCK' | 'WARN' | 'PASS';
+  summary: string;
+  graphImpactNodes?: number;
+}
+
+export interface AgentCorePrReview {
+  sessionId: string;
+  runtime: 'AgentCore Runtime (MicroVM)';
+  bedrockModel: string;
+  cedarPolicy: 'READ_ONLY_PR_COMMENT';
+  verdict: 'PASS' | 'CHANGES_REQUESTED' | 'RUNNING';
+  durationSec: number;
+  gatewayToolsUsed: string[];
+  findings: AgentCoreFinding[];
+  reviewedAt: string;
+}
+
+export interface AgentCoreGatewayTool {
+  id: string;
+  name: string;
+  source: string;
+  consumers: readonly ('AgentCore Reviewer' | 'Copilot Squad IDE' | 'Blitzy Spec Export')[];
+  cedarAccess: 'READ_ONLY';
+  calls24h: number;
+  p95Ms: number;
+  status: 'HEALTHY' | 'DEGRADED';
+  description: string;
 }
 
 export interface TracePrItem {
@@ -124,6 +157,7 @@ export interface TracePrItem {
   updatedAt: string;
   failingCheckSummary?: string;
   url: string;
+  autoReview?: AgentCorePrReview;
 }
 
 export interface KnowledgeStatus {
@@ -132,6 +166,7 @@ export interface KnowledgeStatus {
   totalClaimsCount: number;
   lastPrSynced: string;
   syncTrigger: 'PR_READY' | 'PR_MERGE' | 'LOCAL_SYNC';
+  dispatchRuntime?: 'AgentCore Runtime (Bedrock)' | 'Local Copilot CLI';
   graphifyStatus: 'INDEXED' | 'PARTIAL_LEGACY' | 'MISSING';
   graphNodes: number;
   graphEdgesExtracted: number;
@@ -176,6 +211,8 @@ export interface ReviewBotSpec {
     | 'Compliance-Sicko Bot'
     | 'Jira-Logger Bot';
   permission: 'READ_ONLY' | 'RESTRICTED_JIRA_WRITE';
+  runtime?: 'AgentCore MicroVM (Cloud)' | 'Local Copilot Squad' | 'Hybrid (Local + AgentCore)';
+  cedarPolicy?: string;
   role: string;
   trigger: string;
   runs30d: number;

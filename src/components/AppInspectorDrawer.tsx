@@ -4,6 +4,7 @@ import {
   Bookmark,
   CheckCircle2,
   ClipboardCopy,
+  Clock,
   Database,
   ExternalLink,
   FileCode2,
@@ -19,9 +20,11 @@ import {
   STAGE_LABELS,
   STAGE_ORDER,
   WP_LABELS,
+  type AgentCorePrReview,
   type DependencyFact,
   type InspectorTab,
   type MigrationUnit,
+  type OnboardingStep,
   type TracePrItem,
 } from '@/data/types';
 import { shortHash } from '@/lib/crypto';
@@ -32,9 +35,14 @@ import {
   EmptyState,
   HairlineTabs,
   StatusDot,
+  Tooltip,
   type SignalTone,
 } from './ui/Primitives';
 import { SlideDrawer } from './ui/SlideDrawer';
+import { BlurCrossfade } from './uipros/blur-crossfade';
+import { ProgressTracker, type ProgressStep } from './uipros/progress-tracker-clean';
+import { ShimmerText } from './uipros/shimmer-loader';
+import { TraceWaterfall, type TraceSpan } from './uipros/trace-waterfall-clean';
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -105,6 +113,140 @@ function getDepSourceMeta(dep: DependencyFact): { label: string; tone: SignalTon
   }
 }
 
+function getOnboardingStepIcon(status: OnboardingStep['status']) {
+  switch (status) {
+    case 'DONE':
+      return <CheckCircle2 aria-hidden="true" />;
+    case 'BLOCKED':
+      return <Lock aria-hidden="true" />;
+    case 'WAITING_APPROVAL':
+      return <Clock aria-hidden="true" />;
+    case 'READY':
+      return <Bookmark aria-hidden="true" />;
+  }
+}
+
+function buildAutoReviewTrace(
+  pr: TracePrItem,
+  autoReview: AgentCorePrReview,
+  isRerunning: boolean,
+): { root: TraceSpan; now: number } {
+  const totalMs = Math.max(4000, autoReview.durationSec * 1000);
+  const liveMs = Math.round(totalMs * 0.68);
+  const toolCount = autoReview.gatewayToolsUsed.length;
+
+  const toolSpans: TraceSpan[] = autoReview.gatewayToolsUsed.map((toolName, idx) => {
+    const start = Math.round(totalMs * (0.04 + idx * 0.045));
+    const spanDur = Math.round(totalMs * (0.16 + ((idx * 5 + toolName.length) % 4) * 0.03));
+    const end = Math.min(Math.round(totalMs * 0.38), start + spanDur);
+    return {
+      id: `${pr.prNumber}-mcp-${toolName}-${idx}`,
+      name: toolName,
+      kind: 'tool',
+      status: 'done',
+      start,
+      end,
+      detail: 'Gateway MCP · READ_ONLY',
+      input: `Cedar ${autoReview.cedarPolicy} · ${pr.prNumber} (${pr.branch})`,
+      output: `200 OK · ${toolName} read-only context loaded`,
+    };
+  });
+
+  const reviewerSpans: TraceSpan[] = autoReview.findings.map((finding, idx) => {
+    const start = Math.round(totalMs * (0.32 + idx * 0.06));
+    const weight =
+      finding.reviewer === 'Migration-Semantics'
+        ? 0.44
+        : finding.reviewer === 'Blast-Radius'
+          ? 0.36
+          : 0.28;
+    const plannedEnd = Math.min(Math.round(totalMs * 0.86), start + Math.round(totalMs * weight));
+    const running = isRerunning && (idx > 0 || autoReview.findings.length === 1);
+    const tokensIn =
+      1280 + finding.summary.length * 16 + (finding.graphImpactNodes ?? 0) * 14;
+    const tokensOut = 240 + finding.summary.length * 4;
+    const cost = Number((tokensIn * 0.000003 + tokensOut * 0.000015).toFixed(4));
+
+    return {
+      id: `${pr.prNumber}-rev-${finding.reviewer}`,
+      name: `${finding.reviewer} Reviewer`,
+      kind: 'llm',
+      status: running ? 'running' : finding.severity === 'BLOCK' ? 'failed' : 'done',
+      start,
+      end: running ? undefined : plannedEnd,
+      detail:
+        finding.graphImpactNodes !== undefined
+          ? `${finding.graphImpactNodes} nodes · ${finding.severity}`
+          : finding.severity,
+      model: autoReview.bedrockModel,
+      tokensIn,
+      tokensOut,
+      cost,
+      input: `Evaluate ${pr.prNumber} (${pr.wpCode}) across ${toolCount} Gateway MCP tools`,
+      output: running ? undefined : finding.summary,
+      error: !running && finding.severity === 'BLOCK' ? finding.summary : undefined,
+    };
+  });
+
+  const blockingMessages = autoReview.findings
+    .filter((f) => f.severity === 'BLOCK')
+    .map((f) => `[${f.reviewer}] ${f.summary}`)
+    .join('；');
+
+  const verdictSpan: TraceSpan = {
+    id: `${pr.prNumber}-verdict`,
+    name: 'Findings Verdict & PR Comment',
+    kind: 'subagent',
+    status: isRerunning
+      ? 'running'
+      : autoReview.verdict === 'CHANGES_REQUESTED'
+        ? 'failed'
+        : 'done',
+    start: isRerunning ? Math.round(totalMs * 0.62) : Math.round(totalMs * 0.86),
+    end: isRerunning ? undefined : totalMs,
+    detail: isRerunning ? 'Synthesizing verdict…' : `${autoReview.verdict} · ${autoReview.reviewedAt}`,
+    input: `${autoReview.findings.length} Bedrock reviewer findings · Cedar ${autoReview.cedarPolicy}`,
+    output: isRerunning
+      ? undefined
+      : autoReview.verdict === 'PASS'
+        ? 'PASS · 预审放行人工独立 Review'
+        : 'CHANGES_REQUESTED · 只读回写阻断评论',
+    error:
+      !isRerunning && autoReview.verdict === 'CHANGES_REQUESTED'
+        ? blockingMessages || 'AgentCore 预审拦截'
+        : undefined,
+  };
+
+  const root: TraceSpan = {
+    id: `${pr.prNumber}-${autoReview.sessionId}`,
+    name: 'AgentCore MicroVM Orchestrator',
+    kind: 'agent',
+    status: isRerunning
+      ? 'running'
+      : autoReview.verdict === 'CHANGES_REQUESTED'
+        ? 'failed'
+        : 'done',
+    start: 0,
+    end: isRerunning ? undefined : totalMs,
+    detail: `${autoReview.sessionId} · ${autoReview.cedarPolicy}`,
+    model: autoReview.bedrockModel,
+    input: `${pr.prNumber} · ${pr.branch} · ${autoReview.runtime}`,
+    output: isRerunning
+      ? 'Running read-only MicroVM pre-review…'
+      : `Verdict: ${autoReview.verdict} (${autoReview.findings.length} reviewers)`,
+    error:
+      !isRerunning && autoReview.verdict === 'CHANGES_REQUESTED'
+        ? blockingMessages || 'AgentCore 预审未通过'
+        : undefined,
+    children: [...toolSpans, ...reviewerSpans, verdictSpan],
+  };
+
+  return {
+    root,
+    now: isRerunning ? liveMs : totalMs,
+  };
+}
+
 export function AppInspectorDrawer() {
   const {
     units,
@@ -115,12 +257,14 @@ export function AppInspectorDrawer() {
     closeInspector,
     confirmDependencyFact,
     markKnowledgeSynced,
+    triggerAgentCorePrReview,
     evaluateCutoverDbLock,
     notifyCopied,
   } = useFactory();
 
   const tabPrefix = useId();
   const [syncingWiki, setSyncingWiki] = useState(false);
+  const [reviewingPr, setReviewingPr] = useState<string | null>(null);
   const [confirmingDepId, setConfirmingDepId] = useState<string | null>(null);
   const [lastUnitId, setLastUnitId] = useState<string | null>(inspectorUnitId);
 
@@ -147,9 +291,19 @@ export function AppInspectorDrawer() {
     if (!unit || syncingWiki) return;
     setSyncingWiki(true);
     try {
-      await markKnowledgeSynced(unit.id);
+      await markKnowledgeSynced(unit.id, 'agentcore');
     } finally {
       setSyncingWiki(false);
+    }
+  };
+
+  const handleRerunAutoReview = async (prNumber: string) => {
+    if (!unit || reviewingPr) return;
+    setReviewingPr(prNumber);
+    try {
+      await triggerAgentCorePrReview(unit.id, prNumber);
+    } finally {
+      setReviewingPr(null);
     }
   };
 
@@ -371,8 +525,15 @@ export function AppInspectorDrawer() {
             </div>
           )}
 
-          {/* TAB 1: TRACE */}
-          {inspectorTab === 'trace' && (
+          {/* TAB 1..4 BODY WITH BLUR CROSSFADE */}
+          <BlurCrossfade
+            id={`${unit.id}:${inspectorTab}`}
+            duration={160}
+            blur={3}
+            morph="none"
+          >
+            {/* TAB 1: TRACE */}
+            {inspectorTab === 'trace' && (
             <div
               role="tabpanel"
               aria-labelledby={`${tabPrefix}-tab-trace`}
@@ -488,6 +649,151 @@ export function AppInspectorDrawer() {
                             ))}
                           </div>
 
+                          {/* AWS AgentCore PR Auto Review (Stage 2 Read-Only MicroVM) */}
+                          {pr.autoReview &&
+                            (() => {
+                              const isRerunning = reviewingPr === pr.prNumber;
+                              const traceData = buildAutoReviewTrace(
+                                pr,
+                                pr.autoReview,
+                                isRerunning,
+                              );
+                              return (
+                                <div
+                                  className="rounded-[6px] p-2.5 space-y-2.5"
+                                  style={{
+                                    backgroundColor: 'var(--bg-well)',
+                                    border: `1px solid ${
+                                      pr.autoReview.verdict === 'CHANGES_REQUESTED'
+                                        ? 'var(--signal-danger-line)'
+                                        : 'var(--line)'
+                                    }`,
+                                  }}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <StatusDot
+                                        tone={
+                                          pr.autoReview.verdict === 'PASS'
+                                            ? 'ok'
+                                            : pr.autoReview.verdict === 'CHANGES_REQUESTED'
+                                              ? 'danger'
+                                              : 'accent'
+                                        }
+                                        pulse={isRerunning}
+                                        label={
+                                          pr.autoReview.verdict === 'PASS'
+                                            ? 'AgentCore 预审放行'
+                                            : 'AgentCore 预审拦截'
+                                        }
+                                      />
+                                      <Badge mono tone="neutral">
+                                        Cedar: {pr.autoReview.cedarPolicy}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className="font-mono-tabular text-[10.5px]"
+                                        style={{ color: 'var(--ink-faint)' }}
+                                      >
+                                        {pr.autoReview.sessionId} · {pr.autoReview.durationSec}s
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="xs"
+                                        disabled={isRerunning}
+                                        onClick={() => void handleRerunAutoReview(pr.prNumber)}
+                                      >
+                                        <RefreshCw
+                                          className={`h-3 w-3 ${isRerunning ? 'animate-spin' : ''}`}
+                                          aria-hidden="true"
+                                        />
+                                        {isRerunning ? (
+                                          <ShimmerText duration={1.4}>预审运行中…</ShimmerText>
+                                        ) : (
+                                          '重跑预审'
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  {isRerunning && (
+                                    <div className="px-0.5">
+                                      <ShimmerText duration={1.4} className="text-[11.5px]">
+                                        AgentCore MicroVM 正在重新拉取 Gateway MCP 并调度 Bedrock 审校…
+                                      </ShimmerText>
+                                    </div>
+                                  )}
+
+                                  <TraceWaterfall
+                                    key={pr.prNumber}
+                                    title="AgentCore MicroVM Trace"
+                                    root={traceData.root}
+                                    now={traceData.now}
+                                    markSlowest
+                                  />
+
+                                  <ul className="space-y-1">
+                                    {pr.autoReview.findings.map((finding) => {
+                                      const fTone: SignalTone =
+                                        finding.severity === 'BLOCK'
+                                          ? 'danger'
+                                          : finding.severity === 'WARN'
+                                            ? 'warn'
+                                            : 'ok';
+                                      return (
+                                        <li
+                                          key={finding.reviewer}
+                                          className="flex items-start gap-2 text-[11.5px] leading-[1.45]"
+                                        >
+                                          <span
+                                            className="font-mono-tabular text-[10.5px] font-medium shrink-0 pt-[1px]"
+                                            style={{
+                                              color:
+                                                fTone === 'danger'
+                                                  ? 'var(--signal-danger)'
+                                                  : fTone === 'warn'
+                                                    ? 'var(--signal-warn)'
+                                                    : 'var(--ink-muted)',
+                                            }}
+                                          >
+                                            [{finding.reviewer}]
+                                          </span>
+                                          <span
+                                            className="text-pretty"
+                                            style={{ color: 'var(--ink-secondary)' }}
+                                          >
+                                            {finding.summary}
+                                            {finding.graphImpactNodes !== undefined && (
+                                              <span
+                                                className="ml-1 font-mono-tabular text-[10.5px]"
+                                                style={{ color: 'var(--ink-faint)' }}
+                                              >
+                                                ({finding.graphImpactNodes} nodes)
+                                              </span>
+                                            )}
+                                          </span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+
+                                  <div
+                                    className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 font-mono-tabular text-[10.5px]"
+                                    style={{
+                                      borderTop: '1px solid var(--line-subtle)',
+                                      color: 'var(--ink-faint)',
+                                    }}
+                                  >
+                                    <span className="truncate">
+                                      Gateway MCP: {pr.autoReview.gatewayToolsUsed.join(' · ')}
+                                    </span>
+                                    <span className="shrink-0">{pr.autoReview.reviewedAt}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
                           {/* Metadata footer */}
                           <div
                             className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono-tabular"
@@ -593,12 +899,16 @@ export function AppInspectorDrawer() {
                   {unit.wp00.sha256 && (
                     <div className="col-span-2">
                       <dt style={{ color: 'var(--ink-faint)' }}>S3 Object Lock SHA-256</dt>
-                      <dd
-                        className="mt-0.5 font-mono-tabular truncate"
-                        style={{ color: 'var(--ink-secondary)' }}
-                        title={unit.wp00.sha256}
-                      >
-                        {shortHash(unit.wp00.sha256, 24)}
+                      <dd className="mt-0.5 font-mono-tabular truncate">
+                        <Tooltip content={unit.wp00.sha256} side="top">
+                          <span
+                            tabIndex={0}
+                            className="cursor-help"
+                            style={{ color: 'var(--ink-secondary)' }}
+                          >
+                            {shortHash(unit.wp00.sha256, 24)}
+                          </span>
+                        </Tooltip>
                       </dd>
                     </div>
                   )}
@@ -795,9 +1105,23 @@ export function AppInspectorDrawer() {
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: 'var(--ink-faint)' }}>同步触发策略</div>
-                    <div className="mt-0.5">
+                    <div style={{ color: 'var(--ink-faint)' }}>同步触发与调度运行时</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1">
                       <Badge mono>{unit.knowledge.syncTrigger}</Badge>
+                      {unit.knowledge.dispatchRuntime && (
+                        <Badge
+                          tone={
+                            unit.knowledge.dispatchRuntime === 'AgentCore Runtime (Bedrock)'
+                              ? 'accent'
+                              : 'neutral'
+                          }
+                          mono
+                        >
+                          {unit.knowledge.dispatchRuntime === 'AgentCore Runtime (Bedrock)'
+                            ? 'AgentCore · Bedrock'
+                            : 'Local CLI'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -931,16 +1255,16 @@ export function AppInspectorDrawer() {
 
               {/* Sync Command & Action */}
               <section className="mcp-surface p-3.5 space-y-3">
-                <CopyCommandBar
-                  label="本机刷新中央知识仓命令"
-                  description="PR Ready / Merge 阶段执行 · 禁用外发遥测"
-                  command={unit.localCommands.wikiSync}
-                  onCopy={() => notifyCopied(`${unit.code} wiki sync`)}
-                />
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-                    在本地完成 <code className="font-mono-tabular">agent-kit wiki sync</code> 后可在此回写状态与 SHA-256 审计。
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12px] font-medium" style={{ color: 'var(--ink)' }}>
+                      AWS AgentCore Runtime 增量刷新中央知识仓
+                    </div>
+                    <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+                      隔离 MicroVM（VPC Mode · Bedrock）跑 Graphify + OpenWiki 增量更新并写入{' '}
+                      <code className="font-mono-tabular">migration-knowledge</code> 及 Gateway MCP。
+                    </span>
+                  </div>
                   <Button
                     variant="primary"
                     size="sm"
@@ -951,12 +1275,27 @@ export function AppInspectorDrawer() {
                       className={`h-3.5 w-3.5 ${syncingWiki ? 'animate-spin' : ''}`}
                       aria-hidden="true"
                     />
-                    {unit.knowledge.openwikiStatus === 'FRESH' &&
-                    unit.knowledge.graphifyStatus !== 'MISSING'
-                      ? '重新记录同步'
-                      : '标记已完成同步'}
+                    {syncingWiki ? 'Dispatch 中…' : 'AgentCore 增量刷新'}
                   </Button>
                 </div>
+                {syncingWiki && (
+                  <div className="mcp-well flex items-center gap-2 px-3 py-2">
+                    <span
+                      className="h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ backgroundColor: 'var(--accent)' }}
+                      aria-hidden="true"
+                    />
+                    <ShimmerText duration={1.4} className="text-[11.5px] font-medium">
+                      AgentCore MicroVM (VPC Mode · Bedrock) 正在增量刷新 Graphify AST 与 OpenWiki Claims…
+                    </ShimmerText>
+                  </div>
+                )}
+                <CopyCommandBar
+                  label="本机兜底同步命令（可选离线 / Copilot CLI 通道）"
+                  description="跳过云端调度时，可于本机执行并回写中央仓 · 禁用遥测"
+                  command={unit.localCommands.wikiSync}
+                  onCopy={() => notifyCopied(`${unit.code} wiki sync`)}
+                />
               </section>
             </div>
           )}
@@ -1157,8 +1496,22 @@ export function AppInspectorDrawer() {
                 </div>
 
                 <p className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-                  {unit.onboardingSummary.nextActionLabel}
+                  {unit.onboardingSummary.nextActionLabel} · 坚持本机 Bookmarklet / 本地 Playwright（复用笔记本 SSO 与设备证书，不走云端 Browser Tool）
                 </p>
+
+                <ProgressTracker
+                  key={`${unit.id}:${unit.onboardingSteps.map((s) => `${s.id}:${s.status}`).join(',')}`}
+                  title={`${unit.code} 入云 Onboarding 进度`}
+                  steps={unit.onboardingSteps.map(
+                    (step): ProgressStep => ({
+                      id: step.id,
+                      label: `#${step.order} ${step.title} · ${step.system}${step.ticketId ? ` (${step.ticketId})` : ''}`,
+                      done: step.status === 'DONE',
+                      icon: getOnboardingStepIcon(step.status),
+                    }),
+                  )}
+                  className="max-w-none!"
+                />
 
                 <div className="space-y-2">
                   {unit.onboardingSteps.map((step) => {
@@ -1218,13 +1571,15 @@ export function AppInspectorDrawer() {
                                 <span className="shrink-0" style={{ color: 'var(--ink-faint)' }}>
                                   {k}
                                 </span>
-                                <span
-                                  className="truncate"
-                                  style={{ color: 'var(--ink-secondary)' }}
-                                  title={v}
-                                >
-                                  {v}
-                                </span>
+                                <Tooltip content={v} side="top">
+                                  <span
+                                    tabIndex={0}
+                                    className="truncate cursor-help"
+                                    style={{ color: 'var(--ink-secondary)' }}
+                                  >
+                                    {v}
+                                  </span>
+                                </Tooltip>
                               </div>
                             ))}
                           </div>
@@ -1386,6 +1741,7 @@ export function AppInspectorDrawer() {
               </section>
             </div>
           )}
+          </BlurCrossfade>
         </div>
       )}
     </SlideDrawer>
